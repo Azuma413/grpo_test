@@ -1,0 +1,6 @@
+__pycache__/
+grpo_saved_lora/
+grpo_trainer_lora_model/
+outputs/
+unsloth_compiled_cache/
+wandb/
