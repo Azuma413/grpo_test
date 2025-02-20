@@ -31,7 +31,6 @@ class ShogiDataGenerator:
         """
         all_positions = []
         for game_num in range(num_games):
-            print(2)
             game_positions = self._generate_game_positions()
             if game_positions:  # Only add if positions were generated
                 all_positions.append(game_positions)
@@ -63,12 +62,10 @@ class ShogiDataGenerator:
             "hands": "なし",
             "move_number": move_number
         })
-        print(3)
         while True:
             # Update engine's position with full move sequence
             current_position = f"position startpos moves {' '.join(moves)}"
             self.engine.set_position(current_position)
-            print(4)
             
             # Get legal moves for current position
             legal_moves = self.engine.get_legal_moves()
@@ -84,7 +81,6 @@ class ShogiDataGenerator:
             move_number += 1
             
             # Get accurate SFEN for current position
-            print(5)
             current_sfen = self.engine.get_current_sfen()
             hands = "なし"  # This would be extracted from SFEN if available
             if " w " in current_sfen:
