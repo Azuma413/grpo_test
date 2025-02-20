@@ -26,7 +26,32 @@ class GRPOTrainer(BaseTrainer):
         self.max_completion_length = max_completion_length
         
         # Create reference model for KL divergence computation
-        self.ref_model = type(model)(model.config).eval().to(device)
+        if hasattr(model, 'peft_config'):
+            # For PeftModel, create a new model with the same config
+            from unsloth import FastLanguageModel
+            from config import get_model_config
+            model_config = get_model_config()
+            
+            base_model, _ = FastLanguageModel.from_pretrained(
+                model_name=model_config["model_name"],  # Use the same model name from config
+                max_seq_length=model_config["max_seq_length"],
+                load_in_4bit=model_config["load_in_4bit"],
+                fast_inference=model_config["fast_inference"],
+                max_lora_rank=model_config["lora_rank"],
+                gpu_memory_utilization=model_config["gpu_memory_utilization"],
+            )
+            self.ref_model = FastLanguageModel.get_peft_model(
+                base_model,
+                r=model_config["lora_rank"],
+                target_modules=model_config["target_modules"],
+                lora_alpha=model_config["lora_rank"],  # lora_alpha is typically set to same as rank
+                use_gradient_checkpointing="unsloth",
+                random_state=model_config["random_seed"],  # ensure same initialization
+            ).eval().to(device)
+        else:
+            # For regular models
+            self.ref_model = type(model)(model.config).eval().to(device)
+        
         self.ref_model.load_state_dict(model.state_dict())
 
     def compute_rewards(self, prompts: List[str], completions: List[str], **kwargs) -> torch.Tensor:
