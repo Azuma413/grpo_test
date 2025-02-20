@@ -31,6 +31,7 @@ class ShogiDataGenerator:
         """
         all_positions = []
         for game_num in range(num_games):
+            print(2)
             game_positions = self._generate_game_positions()
             if game_positions:  # Only add if positions were generated
                 all_positions.append(game_positions)
@@ -62,14 +63,16 @@ class ShogiDataGenerator:
             "hands": "なし",
             "move_number": move_number
         })
-        
+        print(3)
         while True:
             # Get legal moves for current position
             command = "startpos" if not moves else f"startpos moves {' '.join(moves)}"
+            print(4)
             legal_moves = self._get_legal_moves(command)
             
             # Check for game end
             if not legal_moves:
+                print("Game over")
                 break
                 
             # Select and play next move
@@ -82,6 +85,7 @@ class ShogiDataGenerator:
             self.engine.set_position(current_position)
             
             # Get accurate SFEN for current position
+            print(5)
             current_sfen = self.engine.get_current_sfen()
             hands = "なし"  # This would be extracted from SFEN if available
             if " w " in current_sfen:
@@ -100,8 +104,8 @@ class ShogiDataGenerator:
             print(f"Move {move_number}: {next_move}")
             
             # Check for game end conditions
-            if self._is_game_over(current_position):
-                break
+            # if self._is_game_over(current_position):
+            #     break
                 
             # Safety check to prevent infinite games
             if move_number >= 200:  # Typical shogi games rarely exceed 200 moves

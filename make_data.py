@@ -28,6 +28,7 @@ def main(num_games: int = 100, seed: int = 42, think_time_ms: int = 1000):
         generator = ShogiDataGenerator(engine)
         
         # Generate positions from games
+        print(1)
         positions = generator.generate_data(num_games=num_games)
         
         # Save raw positions to CSV

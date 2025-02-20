@@ -1,6 +1,8 @@
 import subprocess
 import time
 from typing import List, Optional
+import fcntl
+import os
 
 class YaneuraOuEngine:
     """Interface for the YaneuraOu shogi engine."""
@@ -34,6 +36,10 @@ class YaneuraOuEngine:
                 text=True,
                 bufsize=1  # Line buffering
             )
+            # Set non-blocking mode for stdout
+            fd = self.process.stdout.fileno()
+            fl = fcntl.fcntl(fd, fcntl.F_GETFL)
+            fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
             # Set eval directory using Windows path
             current_dir = "/".join(self.engine_path.split("/")[:-1])
             if current_dir.startswith("/mnt/"):
@@ -204,24 +210,24 @@ class YaneuraOuEngine:
         
         # Send moves command to get all legal moves
         self._send_command("moves")
-        
         while time.time() - start_time < timeout:
             try:
                 line = self.process.stdout.readline().strip()
                 if not line:
                     continue
-                    
+                print("line: ", line)
                 # Split the moves line into individual moves
                 if not line.startswith("info") and not line.startswith("bestmove"):
                     moves = line.split()
                     for move in moves:
                         if move != "none":
                             legal_moves.add(move)
-                
-            except Exception as e:
-                print(f"Error reading moves: {e}")
+            except BlockingIOError:
                 break
-        
+            except Exception as e:
+                print(f"Error reading legal moves: {e}")
+                break
+        print("legal_moves: ", legal_moves)
         return list(legal_moves)
 
     def is_legal_move(self, move: str) -> bool:
