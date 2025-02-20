@@ -2,7 +2,7 @@ import subprocess
 import time
 
 class YaneuraOuEngine:
-    def __init__(self, engine_path: str = "YaneuraOu.exe"):
+    def __init__(self, engine_path: str = "/mnt/e/SourceCode/app/yaneuraou/YaneuraOu_NNUE_halfKP256-V830Git_AVX2.exe"):
         """
         やねうら王エンジンの初期化
         Args:
