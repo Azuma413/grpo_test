@@ -87,6 +87,92 @@ def _hand_to_sfen(hand: str) -> str:
     
     return "".join(result)
 
+def sfen_to_markdown(sfen: str) -> str:
+    """
+    SFEN形式の局面をマークダウン形式に変換
+    Args:
+        sfen: SFEN形式の局面文字列
+    Returns:
+        str: マークダウン形式の盤面文字列
+    """
+    if sfen == "startpos":
+        return create_initial_board()
+
+    # SFENの解析
+    parts = sfen.split()
+    if parts[0] == "sfen":
+        board = parts[1]
+        hand = parts[3]
+    else:
+        board = sfen.split()[0]
+        hand = "-"
+
+    # 駒の変換マップ
+    piece_map = {
+        'P': '歩', 'L': '香', 'N': '桂', 'S': '銀',
+        'G': '金', 'B': '角', 'R': '飛', 'K': '玉',
+        '+P': 'と', '+L': '成香', '+N': '成桂', '+S': '成銀',
+        '+B': '馬', '+R': '龍'
+    }
+
+    # 盤面の変換
+    rows = board.split('/')
+    markdown = ["| 9 | 8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 |",
+                "|---|---|---|---|---|---|---|---|---|"]
+
+    for row in rows:
+        md_row = ["|"]
+        i = 0
+        while i < len(row):
+            if row[i].isdigit():
+                md_row.extend(["　 |"] * int(row[i]))
+                i += 1
+            else:
+                if i + 1 < len(row) and row[i+1] == '+':
+                    piece = piece_map.get(row[i:i+2], '　')
+                    i += 2
+                else:
+                    piece = piece_map.get(row[i], '　')
+                    i += 1
+                md_row.append(f" {piece} |")
+        markdown.append("".join(md_row))
+
+    # 持ち駒の変換
+    if hand == "-":
+        markdown.append("\n持ち駒：なし")
+    else:
+        hand_pieces = []
+        i = 0
+        while i < len(hand):
+            if hand[i].isdigit():
+                count = int(hand[i])
+                piece = piece_map.get(hand[i+1].upper(), '')
+                hand_pieces.extend([piece] * count)
+                i += 2
+            else:
+                piece = piece_map.get(hand[i].upper(), '')
+                hand_pieces.append(piece)
+                i += 1
+        markdown.append(f"\n持ち駒：{'　'.join(hand_pieces)}")
+
+    return "\n".join(markdown)
+
+def create_initial_board() -> str:
+    """初期局面のマークダウン文字列を生成"""
+    return """| 9 | 8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 |
+|---|---|---|---|---|---|---|---|---|
+| 香 | 桂 | 銀 | 金 | 玉 | 金 | 銀 | 桂 | 香 |
+| 　 | 飛 | 　 | 　 | 　 | 　 | 　 | 角 | 　 |
+| 歩 | 歩 | 歩 | 歩 | 歩 | 歩 | 歩 | 歩 | 歩 |
+| 　 | 　 | 　 | 　 | 　 | 　 | 　 | 　 | 　 |
+| 　 | 　 | 　 | 　 | 　 | 　 | 　 | 　 | 　 |
+| 　 | 　 | 　 | 　 | 　 | 　 | 　 | 　 | 　 |
+| 歩 | 歩 | 歩 | 歩 | 歩 | 歩 | 歩 | 歩 | 歩 |
+| 　 | 角 | 　 | 　 | 　 | 　 | 　 | 飛 | 　 |
+| 香 | 桂 | 銀 | 金 | 玉 | 金 | 銀 | 桂 | 香 |
+
+持ち駒：なし"""
+
 def _is_initial_position(sfen_rows: list, hand_sfen: str) -> bool:
     """初期局面かどうかを判定"""
     initial_sfen = [
