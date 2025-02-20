@@ -140,7 +140,7 @@ def test_model(
 def main():
     # Get configurations
     model_config = get_model_config()
-    training_config = get_training_config()
+    training_config = get_training_config(lora_rank=model_config["lora_rank"])
     
     # Update and log configuration
     config = {**model_config, **training_config}
