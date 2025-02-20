@@ -38,5 +38,19 @@ Therefore, without needing to look at further digits, 9.9 is greater than 9.11.
 </answer>
 ```
 ## 参考
-[WSL2でunslothのGPROトレーニングを試してみる](https://note.com/ngc_shj/n/nadc7d41aa970?sub_rt=share_sb)
+[WSL2でunslothのGPROトレーニングを試してみる](https://note.com/ngc_shj/n/nadc7d41aa970?sub_rt=share_sb)\
 [phi-4のGRPOやるipynb](https://colab.research.google.com/github/unslothai/notebooks/blob/main/nb/Phi_4_(14B)-GRPO.ipynb)
+
+
+## TODO
+make_data.pyを完成させる
+
+positions.csvに保存されるデータが更新されていない．
+
+training_data.jsonlのresponseの情報はいらない
+
+完全ランダムではなく候補となる手の上位kからランダムに選ぶようにする．
+
+重複している実装を削除する
+
+データセットを構築して，実際に学習を行う
