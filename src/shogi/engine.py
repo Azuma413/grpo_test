@@ -16,6 +16,8 @@ class YaneuraOuEngine:
         self.think_time_ms = think_time_ms
         self.process: Optional[subprocess.Popen] = None
         self.position = "startpos"
+        self._position_sfen = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1"
+        self._move_count = 1
 
     def start(self) -> bool:
         """Start and initialize the engine in USI mode.
@@ -122,6 +124,68 @@ class YaneuraOuEngine:
         """
         self.position = sfen
         self._send_command(f"position {sfen}")
+        # Get current SFEN after position is set
+        self._update_position_sfen()
+
+    def _update_position_sfen(self, timeout: int = 1) -> bool:
+        """Update the current position SFEN by querying the engine.
+        
+        Args:
+            timeout: Maximum time to wait for response in seconds.
+            
+        Returns:
+            bool: True if SFEN was updated successfully, False otherwise.
+        """
+        self._send_command("d")  # 'd' command displays current position
+        
+        start_time = time.time()
+        sfen_parts = []
+        reading_sfen = False
+        
+        while time.time() - start_time < timeout:
+            try:
+                line = self.process.stdout.readline().strip()
+                if not line:
+                    continue
+                    
+                # Look for the SFEN string in the output
+                if "sfen" in line.lower():
+                    reading_sfen = True
+                    # Extract SFEN parts from this line
+                    parts = line.split()
+                    if len(parts) > 1:
+                        sfen_parts.extend(parts[1:])  # Skip the 'sfen' keyword
+                elif reading_sfen and line:
+                    # Might be continuation of SFEN on next line
+                    sfen_parts.extend(line.split())
+                elif reading_sfen:
+                    # Empty line after reading SFEN - we're done
+                    break
+                    
+            except Exception:
+                return False
+        
+        if sfen_parts:
+            try:
+                # Construct full SFEN string
+                self._position_sfen = " ".join(sfen_parts)
+                # Update move count if it's a startpos with moves
+                if self.position.startswith("position startpos moves"):
+                    moves = self.position.split("moves ")[1].split()
+                    self._move_count = len(moves) + 1
+                return True
+            except Exception:
+                pass
+                
+        return False
+
+    def get_current_sfen(self) -> str:
+        """Get the SFEN representation of the current position.
+        
+        Returns:
+            str: Current position in SFEN format.
+        """
+        return self._position_sfen
 
     def get_position_evaluation(self, timeout: int = 5) -> float:
         """Get engine's evaluation for current position.

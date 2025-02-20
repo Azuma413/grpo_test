@@ -50,53 +50,61 @@ class ShogiDataGenerator:
             List[Dict]: List of positions from the game.
         """
         positions = []
-        current_position = "startpos"
+        moves = []
         move_number = 0
         
         # Set initial position
-        self.engine.set_position(current_position)
+        self.engine.set_position("startpos")
+        
+        # Store initial position with accurate SFEN
+        positions.append({
+            "sfen": self.engine.get_current_sfen(),
+            "hands": "なし",
+            "move_number": move_number
+        })
         
         while True:
-            print(1)
-            # Save current position
-            if current_position == "startpos":
-                print(2)
-                sfen = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b -"
-                hands = "なし"
-            else:
-                print(3)
-                sfen = current_position.replace("position sfen ", "") if current_position.startswith("position sfen ") else current_position
-                if sfen.startswith("startpos moves"):
-                    sfen = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b -"
-                hands = sfen.split()[-2] if len(sfen.split()) >= 4 else "-"
-                hands = "なし" if hands == "-" else hands
+            # Get legal moves for current position
+            command = "startpos" if not moves else f"startpos moves {' '.join(moves)}"
+            legal_moves = self._get_legal_moves(command)
             
+            # Check for game end
+            if not legal_moves:
+                break
+                
+            # Select and play next move
+            next_move = random.choice(legal_moves)
+            moves.append(next_move)
+            move_number += 1
+            
+            # Update engine's position with full move sequence
+            current_position = f"position startpos moves {' '.join(moves)}"
+            self.engine.set_position(current_position)
+            
+            # Get accurate SFEN for current position
+            current_sfen = self.engine.get_current_sfen()
+            hands = "なし"  # This would be extracted from SFEN if available
+            if " w " in current_sfen:
+                hands = current_sfen.split(" w ")[1].split(" ")[0]
+            elif " b " in current_sfen:
+                hands = current_sfen.split(" b ")[1].split(" ")[0]
+            if hands == "-":
+                hands = "なし"
+                
             positions.append({
-                "sfen": sfen,
+                "sfen": current_sfen,
                 "hands": hands,
                 "move_number": move_number
             })
-            print(4)
-            # Get legal moves and randomly select next move
-            legal_moves = self._get_legal_moves(current_position)
-            if not legal_moves:
-                break
-            print(5)
-            next_move = random.choice(legal_moves)
             
-            # Update current position
-            if current_position == "startpos":
-                current_position = f"position startpos moves {next_move}"
-            else:
-                current_position = f"{current_position} {next_move}"
-            print(6)
-            # Update engine's position
-            self.engine.set_position(current_position)
-            move_number += 1
             print(f"Move {move_number}: {next_move}")
             
+            # Check for game end conditions
+            if self._is_game_over(current_position):
+                break
+                
             # Safety check to prevent infinite games
-            if move_number > 200:  # Typical shogi games rarely exceed 200 moves
+            if move_number >= 200:  # Typical shogi games rarely exceed 200 moves
                 break
         
         return positions
