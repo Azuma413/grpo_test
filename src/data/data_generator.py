@@ -99,7 +99,8 @@ class ShogiDataGenerator:
             #     break
                 
             # Safety check to prevent infinite games
-            if move_number >= 200:  # Typical shogi games rarely exceed 200 moves
+            if move_number >= 10:  # Typical shogi games rarely exceed 200 moves
+            # if move_number >= 200:  # Typical shogi games rarely exceed 200 moves
                 break
         
         return positions
