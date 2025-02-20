@@ -123,70 +123,98 @@ class YaneuraOuEngine:
         self.position = sfen
         self._send_command(f"position {sfen}")
 
-    def get_position_evaluation(self, position: str, move: str, search_depth: int = 10) -> float:
-        """Get engine's evaluation after a move.
+    def get_position_evaluation(self, search_depth: int = 10, timeout: int = 5) -> float:
+        """Get engine's evaluation for current position.
         
         Args:
-            position: Current position in SFEN format.
-            move: Move to evaluate in USI format.
             search_depth: Search depth for evaluation.
+            timeout: Maximum time to wait in seconds.
             
         Returns:
             float: Position evaluation in centipawns, or ±inf for mate.
         """
-        self.set_position(position)
-        self._send_command(f"go mate {move}")
+        self._send_command(f"go depth {search_depth}")
         
         evaluation = 0.0
-        start_time = time.time()
-        while time.time() - start_time < 5:  # 5 second timeout
-            line = self.process.stdout.readline().strip()
-            if line.startswith("info score cp"):
-                evaluation = float(line.split()[3])
-                break
-            elif line.startswith("info score mate"):
-                # Return ±inf for mate positions
-                evaluation = float('inf') if int(line.split()[3]) > 0 else float('-inf')
-                break
-        
-        return evaluation
-
-    def get_legal_moves(self, timeout: int = 2) -> List[str]:
-        """Get list of legal moves for current position.
-        
-        Args:
-            timeout: Maximum time to wait for move list.
-            
-        Returns:
-            List[str]: Legal moves in USI format.
-        """
-        self._send_command("go movelist")
-        
-        legal_moves = []
         start_time = time.time()
         while time.time() - start_time < timeout:
             line = self.process.stdout.readline().strip()
             if line.startswith("bestmove"):
                 break
-            if line.startswith("info string"):
-                moves = line.split()[2:]
-                legal_moves.extend(moves)
+            elif line.startswith("info") and ("score cp" in line or "score mate" in line):
+                # Extract score from the line
+                parts = line.split()
+                try:
+                    score_idx = parts.index("score")
+                    if parts[score_idx + 1] == "cp":
+                        evaluation = float(parts[score_idx + 2])
+                    elif parts[score_idx + 1] == "mate":
+                        mate_in = int(parts[score_idx + 2])
+                        evaluation = float('inf') if mate_in > 0 else float('-inf')
+                except (ValueError, IndexError):
+                    continue
         
-        return legal_moves
+        return evaluation
 
-    def is_legal_move(self, position: str, move: str) -> bool:
-        """Check if a move is legal in the given position.
+    def get_legal_moves(self, timeout: int = 2) -> List[str]:
+        """Get list of legal moves for current position using multiple quick searches.
         
         Args:
-            position: Position in SFEN format.
+            timeout: Maximum time to wait for engine response.
+            
+        Returns:
+            List[str]: Legal moves in USI format.
+        """
+        legal_moves = []
+        excluded_moves = set()
+        start_time = time.time()
+        
+        while time.time() - start_time < timeout:
+            # Construct go command excluding known moves
+            exclude_str = " searchmoves " + " ".join(legal_moves) if legal_moves else ""
+            self._send_command(f"go movetime 100{exclude_str}")
+            
+            found_new_move = False
+            while True:
+                line = self.process.stdout.readline().strip()
+                if not line:
+                    continue
+                    
+                if line.startswith("bestmove"):
+                    move = line.split()[1]
+                    if move != "none" and move not in excluded_moves:
+                        legal_moves.append(move)
+                        excluded_moves.add(move)
+                        found_new_move = True
+                    break
+                elif line.startswith("info") and "pv" in line:
+                    # Extract moves from principal variation
+                    try:
+                        pv_index = line.index("pv")
+                        moves = line.split()[pv_index + 1:]
+                        for move in moves:
+                            if move not in excluded_moves:
+                                legal_moves.append(move)
+                                excluded_moves.add(move)
+                                found_new_move = True
+                    except (ValueError, IndexError):
+                        continue
+            
+            if not found_new_move:
+                break
+                
+        return legal_moves
+
+    def is_legal_move(self, move: str) -> bool:
+        """Check if a move is legal in the current position.
+        
+        Args:
             move: Move to check in USI format.
             
         Returns:
             bool: True if move is legal, False otherwise.
         """
-        self.set_position(position)
-        legal_moves = self.get_legal_moves()
-        return move in legal_moves
+        return move in self.get_legal_moves()
 
     def close(self):
         """Shutdown the engine."""

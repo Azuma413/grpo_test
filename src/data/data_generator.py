@@ -33,13 +33,16 @@ class ShogiDataGenerator:
                 - move_number: Move number in the game
         """
         all_positions = []
-        for _ in range(num_games):
+        for game_num in range(num_games):
             game_positions = self._generate_game_positions()
-            all_positions.append(game_positions)
-            print(f"Generated game with {len(game_positions)} positions")
+            if game_positions:  # Only add if positions were generated
+                all_positions.append(game_positions)
+                print(f"Game {game_num + 1}: Generated {len(game_positions)} positions")
+            else:
+                print(f"Game {game_num + 1}: Failed to generate positions")
         
         total_positions = sum(len(game_pos) for game_pos in all_positions)
-        print(f"Generated total of {total_positions} positions from {num_games} games")
+        print(f"\nGenerated total of {total_positions} positions from {len(all_positions)} successful games")
         
         return all_positions
 
@@ -53,6 +56,9 @@ class ShogiDataGenerator:
         current_position = "startpos"
         move_number = 0
         
+        # Set initial position
+        self.engine.set_position(current_position)
+        
         while not self._is_game_over(current_position):
             # Save current position
             if current_position == "startpos":
@@ -60,6 +66,8 @@ class ShogiDataGenerator:
                 hands = "なし"
             else:
                 sfen = current_position.replace("position sfen ", "") if current_position.startswith("position sfen ") else current_position
+                if sfen.startswith("startpos moves"):
+                    sfen = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b -"
                 hands = sfen.split()[-2] if len(sfen.split()) >= 4 else "-"
                 hands = "なし" if hands == "-" else hands
             
@@ -69,18 +77,26 @@ class ShogiDataGenerator:
                 "move_number": move_number
             })
             
-            # Get next move
+            # Get legal moves and randomly select next move
             legal_moves = self._get_legal_moves(current_position)
             if not legal_moves:
                 break
                 
             next_move = random.choice(legal_moves)
+            
+            # Update current position
             if current_position == "startpos":
                 current_position = f"position startpos moves {next_move}"
             else:
                 current_position = f"{current_position} {next_move}"
             
+            # Update engine's position
+            self.engine.set_position(current_position)
             move_number += 1
+            
+            # Safety check to prevent infinite games
+            if move_number > 200:  # Typical shogi games rarely exceed 200 moves
+                break
         
         return positions
 
@@ -93,27 +109,14 @@ class ShogiDataGenerator:
         Returns:
             bool: True if game should end, False to continue.
         """
+        # Get legal moves first - if none, game is over
         legal_moves = self._get_legal_moves(position)
         if not legal_moves:
             return True
             
         # Check position evaluation
-        self.engine.set_position(position)
-        self.engine._send_command("go depth 10")
-        
-        while True:
-            line = self.engine.process.stdout.readline().strip()
-            if line.startswith("bestmove"):
-                break
-            if line.startswith("info score cp"):
-                try:
-                    score = float(line.split()[3])
-                    if abs(score) > self.evaluation_threshold:
-                        return True
-                except (IndexError, ValueError):
-                    pass
-        
-        return False
+        evaluation = self.engine.get_position_evaluation()
+        return abs(evaluation) > self.evaluation_threshold
 
     def _get_legal_moves(self, position: str) -> List[str]:
         """Get list of legal moves for a position.
