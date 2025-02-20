@@ -140,27 +140,26 @@ class YaneuraOuEngine:
 
     def _update_position_sfen(self) -> None:
         """Update the internal SFEN representation based on the current position."""
-        # If position is startpos with moves, extract moves and calculate SFEN
-        if self.position.startswith("position startpos"):
+        # Since USI protocol doesn't provide a direct way to get SFEN,
+        # we track it based on position command
+        if "sfen" in self.position:
+            # Extract SFEN from position command
+            parts = self.position.split("sfen ")[1]
+            if " moves " in parts:
+                self._position_sfen = parts.split(" moves ")[0]
+                moves = parts.split(" moves ")[1].split()
+                self._move_count = len(moves) + 1
+            else:
+                self._position_sfen = parts
+                self._move_count = 1
+        else:  # startpos
             if "moves" in self.position:
                 moves = self.position.split("moves ")[1].split()
                 self._move_count = len(moves) + 1
+                # TODO: Implement proper SFEN tracking after moves
             else:
                 self._move_count = 1
-            # Keep initial SFEN for startpos
-            self._position_sfen = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1"
-        elif "sfen" in self.position:
-            # For direct SFEN input, use it as is
-            self._position_sfen = self.position.split("sfen ")[1].split(" moves ")[0]
-            if " moves " in self.position:
-                moves = self.position.split(" moves ")[1].split()
-                self._move_count = len(moves) + 1
-            else:
-                self._move_count = 1
-        else:
-            # Default to startpos if no valid format is found
-            self._move_count = 1
-            self._position_sfen = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1"
+                self._position_sfen = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1"
 
     def get_current_sfen(self) -> str:
         """Get the SFEN representation of the current position.
@@ -203,7 +202,7 @@ class YaneuraOuEngine:
         return evaluation
 
     def get_legal_moves(self, timeout: int = 1) -> List[str]:
-        """Get list of legal moves for current position using the moves command.
+        """Get list of legal moves for current position using go command.
         
         Args:
             timeout: Maximum time to wait for engine response in seconds.
@@ -214,7 +213,7 @@ class YaneuraOuEngine:
         if not self.process or self.process.poll() is not None:
             return []
 
-        print(f"Current position: {self.position}")  # Debug line
+        print(f"Current position: {self.position}")
 
         # Send stop command to ensure no ongoing search
         self._send_command("stop")
@@ -225,40 +224,34 @@ class YaneuraOuEngine:
         time.sleep(0.1)
         self._send_command("isready")
         if not self._wait_for_response("readyok", timeout=1):
-            print("Warning: Engine did not respond with readyok")
-            return []  # Return empty list if engine is not responding
-        
-        # Clear any pending output
-        try:
-            while self.process.stdout.readline().strip():
-                continue
-        except:
-            pass
-            
+            return []
+
         legal_moves = set()
-        start_time = time.time()
         
-        # Send moves command to get all legal moves
-        self._send_command("moves")
+        # Use go command with very short time to get move suggestions
+        self._send_command("go movetime 100")  # 100ms should be enough
+        
+        start_time = time.time()
         while time.time() - start_time < timeout:
             try:
                 line = self.process.stdout.readline().strip()
                 if not line:
                     continue
-                print("line: ", line)
-                # Split the moves line into individual moves
-                if not line.startswith("info") and not line.startswith("bestmove"):
-                    moves = line.split()
-                    for move in moves:
-                        if move != "none":
-                            legal_moves.add(move)
-            except BlockingIOError:
-                if legal_moves:  # If we have moves, we can return
+                if line.startswith("bestmove"):
+                    # Add the best move to legal moves
+                    move = line.split()[1]
+                    if move != "none":
+                        legal_moves.add(move)
                     break
-                continue  # Otherwise keep trying to read
-            except Exception as e:
-                print(f"Error reading legal moves: {e}")
-                break
+                if line.startswith("info") and "pv" in line:
+                    # Extract moves from PV (Principal Variation)
+                    pv_index = line.index(" pv ") + 4
+                    moves = line[pv_index:].split()
+                    for move in moves:
+                        legal_moves.add(move)
+            except:
+                continue
+
         print("legal_moves: ", legal_moves)
         return list(legal_moves)
 
