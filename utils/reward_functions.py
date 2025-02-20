@@ -1,6 +1,6 @@
 import re
 from typing import List, Union, Callable
-from .engine_interface import EngineInterface
+from game.engine_interface import EngineInterface
 
 # Type alias for reward functions
 RewardFunction = Callable[[List[str], ...], List[float]]
