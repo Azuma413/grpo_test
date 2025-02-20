@@ -93,6 +93,7 @@ class ShogiDataGenerator:
             # Update engine's position
             self.engine.set_position(current_position)
             move_number += 1
+            print(f"Move {move_number}: {next_move}")
             
             # Safety check to prevent infinite games
             if move_number > 200:  # Typical shogi games rarely exceed 200 moves

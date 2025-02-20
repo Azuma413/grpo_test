@@ -104,9 +104,7 @@ class YaneuraOuEngine:
                 return False
                 
             try:
-                text = self.process.stdout.readline().strip()
-                print(f"Engine response: {text}")
-                if text == expected:
+                if self.process.stdout.readline().strip() == expected:
                     return True
             except Exception as e:
                 print(f"Error reading response: {e}")
