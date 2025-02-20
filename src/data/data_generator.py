@@ -8,16 +8,13 @@ from ..shogi import YaneuraOuEngine, sfen_to_markdown
 class ShogiDataGenerator:
     """Generate training data for shogi position learning."""
     
-    def __init__(self, engine: YaneuraOuEngine, evaluation_threshold: float = 1000.0):
+    def __init__(self, engine: YaneuraOuEngine):
         """Initialize the data generator.
         
         Args:
             engine: Initialized YaneuraOu engine instance.
-            evaluation_threshold: Position evaluation threshold for game termination.
-                Games end when abs(evaluation) > threshold.
         """
         self.engine = engine
-        self.evaluation_threshold = evaluation_threshold
 
     def generate_data(self, num_games: int = 100) -> List[List[Dict[str, Any]]]:
         """Generate training data from multiple games.
@@ -114,10 +111,7 @@ class ShogiDataGenerator:
         legal_moves = self._get_legal_moves(position)
         if not legal_moves:
             return True
-            
-        # Check position evaluation
-        evaluation = self.engine.get_position_evaluation()
-        return abs(evaluation) > self.evaluation_threshold
+        return False
 
     def _get_legal_moves(self, position: str) -> List[str]:
         """Get list of legal moves for a position.
