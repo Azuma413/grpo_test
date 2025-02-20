@@ -38,6 +38,15 @@ class YaneuraOuEngine:
                 print(3)
                 return False
             print(4)
+            # Set eval directory using Windows path
+            current_dir = "/".join(self.engine_path.split("/")[:-1])
+            if current_dir.startswith("/mnt/"):
+                # Convert WSL path to Windows path
+                drive = current_dir.split("/")[2]
+                windows_path = current_dir.replace(f"/mnt/{drive}", f"{drive.upper()}:")
+                windows_path = windows_path.replace("/", "\\")
+                self._send_command(f"setoption name EvalDir value {windows_path}")
+            
             # Start new game
             self._send_command("usinewgame")
             print(5)
