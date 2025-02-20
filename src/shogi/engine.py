@@ -128,30 +128,39 @@ class YaneuraOuEngine:
         Args:
             sfen: Position in SFEN format or special 'startpos' command.
         """
-        self.position = sfen
-        self._send_command(f"position {sfen}")
+        self.position = sfen if sfen.startswith("position ") else f"position {sfen}"
+        self._send_command(self.position)
+        # Wait for engine to process position
+        time.sleep(0.1)
+        # Send isready to ensure position is processed
+        self._send_command("isready")
+        self._wait_for_response("readyok", timeout=1)
         # Get current SFEN after position is set
         self._update_position_sfen()
 
     def _update_position_sfen(self) -> None:
         """Update the internal SFEN representation based on the current position."""
         # If position is startpos with moves, extract moves and calculate SFEN
-        if self.position.startswith("position startpos moves"):
-            moves = self.position.split("moves ")[1].split()
-            self._move_count = len(moves) + 1
+        if self.position.startswith("position startpos"):
+            if "moves" in self.position:
+                moves = self.position.split("moves ")[1].split()
+                self._move_count = len(moves) + 1
+            else:
+                self._move_count = 1
             # Keep initial SFEN for startpos
             self._position_sfen = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1"
-        elif self.position == "startpos":
-            self._move_count = 1
-            self._position_sfen = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1"
-        else:
+        elif "sfen" in self.position:
             # For direct SFEN input, use it as is
-            self._position_sfen = self.position.replace("position sfen ", "").split(" moves ")[0]
+            self._position_sfen = self.position.split("sfen ")[1].split(" moves ")[0]
             if " moves " in self.position:
                 moves = self.position.split(" moves ")[1].split()
                 self._move_count = len(moves) + 1
             else:
                 self._move_count = 1
+        else:
+            # Default to startpos if no valid format is found
+            self._move_count = 1
+            self._position_sfen = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1"
 
     def get_current_sfen(self) -> str:
         """Get the SFEN representation of the current position.
@@ -205,6 +214,20 @@ class YaneuraOuEngine:
         if not self.process or self.process.poll() is not None:
             return []
 
+        print(f"Current position: {self.position}")  # Debug line
+
+        # Send stop command to ensure no ongoing search
+        self._send_command("stop")
+        time.sleep(0.1)
+        
+        # Re-synchronize position state
+        self._send_command(self.position)
+        time.sleep(0.1)
+        self._send_command("isready")
+        if not self._wait_for_response("readyok", timeout=1):
+            print("Warning: Engine did not respond with readyok")
+            return []  # Return empty list if engine is not responding
+        
         # Clear any pending output
         try:
             while self.process.stdout.readline().strip():

@@ -65,10 +65,13 @@ class ShogiDataGenerator:
         })
         print(3)
         while True:
-            # Get legal moves for current position
-            command = "startpos" if not moves else f"startpos moves {' '.join(moves)}"
+            # Update engine's position with full move sequence
+            current_position = f"position startpos moves {' '.join(moves)}"
+            self.engine.set_position(current_position)
             print(4)
-            legal_moves = self._get_legal_moves(command)
+            
+            # Get legal moves for current position
+            legal_moves = self.engine.get_legal_moves()
             
             # Check for game end
             if not legal_moves:
@@ -79,10 +82,6 @@ class ShogiDataGenerator:
             next_move = random.choice(legal_moves)
             moves.append(next_move)
             move_number += 1
-            
-            # Update engine's position with full move sequence
-            current_position = f"position startpos moves {' '.join(moves)}"
-            self.engine.set_position(current_position)
             
             # Get accurate SFEN for current position
             print(5)
