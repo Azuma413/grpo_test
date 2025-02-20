@@ -54,4 +54,4 @@ def main(num_games: int = 100, seed: int = 42):
 if __name__ == "__main__":
     # Create datasets directory if it doesn't exist
     Path("datasets").mkdir(exist_ok=True)
-    main()
+    main(num_games=1)
