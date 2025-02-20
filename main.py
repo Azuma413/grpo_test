@@ -1,5 +1,6 @@
 from typing import Optional
 import torch
+import os
 
 from models.model_factory import ModelFactory, ModelConfig
 from trainer.online_trainer import OnlineGRPOTrainer
@@ -138,8 +139,16 @@ def test_model(
     print("-" * 50)
 
 def main():
+    # Debug: Print environment variables
+    print("Debug: CUDA Environment Variables")
+    for key, value in os.environ.items():
+        if "CUDA" in key or "VLLM" in key:
+            print(f"{key}: {value}")
+    
     # Get configurations
     model_config = get_model_config()
+    print("\nDebug: Model Config")
+    print(f"GPU Memory Utilization: {model_config['gpu_memory_utilization']}")
     training_config = get_training_config(lora_rank=model_config["lora_rank"])
     
     # Log configurations separately
