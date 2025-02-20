@@ -155,54 +155,53 @@ class YaneuraOuEngine:
         
         return evaluation
 
-    def get_legal_moves(self, timeout: int = 2) -> List[str]:
-        """Get list of legal moves for current position using multiple quick searches.
+    def get_legal_moves(self, timeout: int = 1) -> List[str]:
+        """Get list of legal moves for current position using a quick single search.
         
         Args:
-            timeout: Maximum time to wait for engine response.
+            timeout: Maximum time to wait for engine response in seconds.
             
         Returns:
             List[str]: Legal moves in USI format.
         """
-        legal_moves = []
-        excluded_moves = set()
+        if not self.process or self.process.poll() is not None:
+            return []
+            
+        legal_moves = set()
         start_time = time.time()
         
+        # Use minimal search time to get quick move generation
+        self._send_command(f"go movetime {self.think_time_ms}")
+        
         while time.time() - start_time < timeout:
-            # Construct go command excluding known moves
-            exclude_str = " searchmoves " + " ".join(legal_moves) if legal_moves else ""
-            self._send_command(f"go movetime {self.think_time_ms}{exclude_str}")
-            
-            found_new_move = False
-            while True:
+            try:
                 line = self.process.stdout.readline().strip()
                 if not line:
                     continue
-                    
+                
+                # Stop when we get the bestmove
                 if line.startswith("bestmove"):
                     move = line.split()[1]
-                    if move != "none" and move not in excluded_moves:
-                        legal_moves.append(move)
-                        excluded_moves.add(move)
-                        found_new_move = True
+                    if move != "none":
+                        legal_moves.add(move)
                     break
-                elif line.startswith("info") and "pv" in line:
-                    # Extract moves from principal variation
+                
+                # Process multipv and pv lines for moves
+                if line.startswith("info") and "pv" in line:
+                    parts = line.split()
                     try:
-                        pv_index = line.index("pv")
-                        moves = line.split()[pv_index + 1:]
-                        for move in moves:
-                            if move not in excluded_moves:
-                                legal_moves.append(move)
-                                excluded_moves.add(move)
-                                found_new_move = True
+                        pv_index = parts.index("pv")
+                        # Only take the first move from each line
+                        move = parts[pv_index + 1]
+                        if move != "none":
+                            legal_moves.add(move)
                     except (ValueError, IndexError):
                         continue
-            
-            if not found_new_move:
+                        
+            except Exception:
                 break
-                
-        return legal_moves
+        
+        return list(legal_moves)
 
     def is_legal_move(self, move: str) -> bool:
         """Check if a move is legal in the current position.
