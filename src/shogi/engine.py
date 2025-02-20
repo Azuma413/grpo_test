@@ -204,6 +204,13 @@ class YaneuraOuEngine:
         """
         if not self.process or self.process.poll() is not None:
             return []
+
+        # Clear any pending output
+        try:
+            while self.process.stdout.readline().strip():
+                continue
+        except:
+            pass
             
         legal_moves = set()
         start_time = time.time()
@@ -223,7 +230,9 @@ class YaneuraOuEngine:
                         if move != "none":
                             legal_moves.add(move)
             except BlockingIOError:
-                break
+                if legal_moves:  # If we have moves, we can return
+                    break
+                continue  # Otherwise keep trying to read
             except Exception as e:
                 print(f"Error reading legal moves: {e}")
                 break
