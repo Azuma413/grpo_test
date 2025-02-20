@@ -53,27 +53,18 @@ class ShogiDataGenerator:
         moves = []
         move_number = 0
         
-        # Set initial position
+        # Set initial position and store it
         self.engine.set_position("startpos")
+        current_sfen = self.engine.get_current_sfen()
+        positions.append({
+            "sfen": current_sfen,
+            "hands": "なし",
+            "move_number": move_number,
+            "previous_move": None
+        })
         
         while True:
-            # Get accurate SFEN for current position
-            current_sfen = self.engine.get_current_sfen()
-            hands = "なし"  # Default value
-            if " w " in current_sfen:
-                hands = current_sfen.split(" w ")[1].split(" ")[0]
-            elif " b " in current_sfen:
-                hands = current_sfen.split(" b ")[1].split(" ")[0]
-            if hands == "-":
-                hands = "なし"
-            
-            # Store current position
-            positions.append({
-                "sfen": current_sfen,
-                "hands": hands,
-                "move_number": move_number,
-                "previous_move": moves[-1] if moves else None
-            })
+            move_number += 1
             
             # Get legal moves for current position
             legal_moves = self.engine.get_legal_moves()
@@ -83,14 +74,31 @@ class ShogiDataGenerator:
                 print("Game over")
                 break
                 
-            # Select and play next move
+            # Select next move
             next_move = random.choice(legal_moves)
             moves.append(next_move)
-            move_number += 1
             
             # Update engine's position with new move
             current_position = f"position startpos moves {' '.join(moves)}"
             self.engine.set_position(current_position)
+            
+            # Get accurate SFEN for updated position
+            current_sfen = self.engine.get_current_sfen()
+            hands = "なし"  # Default value
+            if " w " in current_sfen:
+                hands = current_sfen.split(" w ")[1].split(" ")[0]
+            elif " b " in current_sfen:
+                hands = current_sfen.split(" b ")[1].split(" ")[0]
+            if hands == "-":
+                hands = "なし"
+            
+            # Store position after the move
+            positions.append({
+                "sfen": current_sfen,
+                "hands": hands,
+                "move_number": move_number,
+                "previous_move": next_move
+            })
             
             print(f"Move {move_number}: {next_move}")
             
