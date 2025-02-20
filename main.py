@@ -3,13 +3,16 @@ PatchFastRL("GRPO", FastLanguageModel)
 
 import wandb
 from config import get_model_config, get_training_config, get_sampling_params
-from data_utils import get_gsm8k_questions, SYSTEM_PROMPT
+from data_utils import SYSTEM_PROMPT
+from shogi_engine import YaneuraOuEngine
+from shogi_utils import markdown_to_sfen, move_to_usi
 from reward_functions import (
     xmlcount_reward_func,
     soft_format_reward_func,
     strict_format_reward_func,
-    int_reward_func,
-    correctness_reward_func
+    evaluation_reward_func,
+    soft_shogi_format_reward_func,
+    strict_shogi_format_reward_func
 )
 
 # Get configurations
@@ -46,8 +49,39 @@ model = FastLanguageModel.get_peft_model(
     random_state = 3407,
 )
 
-# Load dataset
-dataset = get_gsm8k_questions()
+# Initialize Shogi engine and utilities
+engine = YaneuraOuEngine()
+if not engine.start():
+    raise RuntimeError("Failed to start YaneuraOu engine")
+
+def process_shogi_board(markdown_board: str, move: str) -> tuple[str, str]:
+    """将棋盤のマークダウンとLLMの指し手をSFEN/USI形式に変換"""
+    sfen = markdown_to_sfen(markdown_board)
+    usi = move_to_usi(move)
+    return sfen, usi
+
+# Training dataset with position evaluation
+dataset = [
+    {
+        "prompt": """次の局面で指すべき手を考えてください。
+
+| 9 | 8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 |
+|---|---|---|---|---|---|---|---|---|
+| 香 | 桂 | 銀 | 金 | 玉 | 金 | 銀 | 桂 | 香 |
+| 　 | 飛 | 　 | 　 | 　 | 　 | 　 | 角 | 　 |
+| 歩 | 歩 | 歩 | 歩 | 歩 | 歩 | 歩 | 歩 | 歩 |
+| 　 | 　 | 　 | 　 | 　 | 　 | 　 | 　 | 　 |
+| 　 | 　 | 　 | 　 | 　 | 　 | 　 | 　 | 　 |
+| 　 | 　 | 　 | 　 | 　 | 　 | 　 | 　 | 　 |
+| 歩 | 歩 | 歩 | 歩 | 歩 | 歩 | 歩 | 歩 | 歩 |
+| 　 | 角 | 　 | 　 | 　 | 　 | 　 | 飛 | 　 |
+| 香 | 桂 | 銀 | 金 | 玉 | 金 | 銀 | 桂 | 香 |
+
+持ち駒：なし
+""",
+        "response": "<reasoning>\n中央の支配力を高め、後の展開を容易にする手です。\n</reasoning>\n<answer>\n７六歩\n</answer>"
+    }
+]
 
 # Initialize trainer
 from trl import GRPOTrainer
@@ -55,11 +89,12 @@ trainer = GRPOTrainer(
     model = model,
     processing_class = tokenizer,
     reward_funcs = [
-        xmlcount_reward_func,
-        soft_format_reward_func,
-        strict_format_reward_func,
-        int_reward_func,
-        correctness_reward_func,
+        xmlcount_reward_func,              # XMLの構造チェック
+        soft_format_reward_func,           # 基本的なフォーマットチェック
+        strict_format_reward_func,         # 厳密なフォーマットチェック
+        evaluation_reward_func,            # やねうら王による評価値報酬
+        soft_shogi_format_reward_func,     # 将棋の指し手形式チェック（緩い）
+        strict_shogi_format_reward_func,   # 将棋の指し手形式チェック（厳密）
     ],
     args = get_training_config(lora_rank),
     train_dataset = dataset,
@@ -99,6 +134,23 @@ def test_model(question: str, use_lora: bool = False):
     print("-" * 50)
 
 # Test the model
-test_question = "Which is bigger? 9.11 or 9.9?"
+test_question = """
+| 9 | 8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 |
+|---|---|---|---|---|---|---|---|---|
+| 香 | 桂 | 銀 | 金 | 玉 | 金 | 銀 | 桂 | 香 |
+| 　 | 飛 | 　 | 　 | 　 | 　 | 　 | 角 | 　 |
+| 歩 | 歩 | 歩 | 歩 | 歩 | 歩 | 歩 | 歩 | 歩 |
+| 　 | 　 | 　 | 　 | 　 | 　 | 　 | 　 | 　 |
+| 　 | 　 | 　 | 　 | 　 | 　 | 　 | 　 | 　 |
+| 　 | 　 | 　 | 　 | 　 | 　 | 　 | 　 | 　 |
+| 歩 | 歩 | 歩 | 歩 | 歩 | 歩 | 歩 | 歩 | 歩 |
+| 　 | 角 | 　 | 　 | 　 | 　 | 　 | 飛 | 　 |
+| 香 | 桂 | 銀 | 金 | 玉 | 金 | 銀 | 桂 | 香 |
+
+持ち駒：なし
+"""
 test_model(test_question, use_lora=False)
 test_model(test_question, use_lora=True)
+
+# Clean up
+engine.close()
