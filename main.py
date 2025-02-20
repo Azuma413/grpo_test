@@ -142,9 +142,11 @@ def main():
     model_config = get_model_config()
     training_config = get_training_config(lora_rank=model_config["lora_rank"])
     
-    # Update and log configuration
-    config = {**model_config, **training_config}
-    config = log_training_config(config)
+    # Log configurations separately
+    config = log_training_config({
+        "model_config": model_config,
+        "training_config": training_config.__dict__,
+    })
     
     # Initialize logger
     logger = setup_logging(
@@ -164,12 +166,12 @@ def main():
             model_config=ModelConfig(**model_config),
             system_prompt=SYSTEM_PROMPT,
             engine=engine_wrapper,
-            learning_rate=training_config["learning_rate"],
+            learning_rate=training_config.learning_rate,
         )
         
         train(
             trainer=trainer,
-            num_games=training_config["num_games"],
+            num_games=training_config.max_steps,
             logger=logger,
         )
         
