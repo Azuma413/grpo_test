@@ -22,7 +22,6 @@ class YaneuraOuEngine:
             bool: True if engine started successfully, False otherwise.
         """
         try:
-            print(1)
             self.process = subprocess.Popen(
                 [self.engine_path],
                 stdin=subprocess.PIPE,
@@ -31,25 +30,21 @@ class YaneuraOuEngine:
                 text=True,
                 bufsize=1  # Line buffering
             )
-            print(2)
-            
-            # Initialize USI mode
-            if not self._initialize_usi():
-                print(3)
-                return False
-            print(4)
             # Set eval directory using Windows path
             current_dir = "/".join(self.engine_path.split("/")[:-1])
             if current_dir.startswith("/mnt/"):
                 # Convert WSL path to Windows path
                 drive = current_dir.split("/")[2]
                 windows_path = current_dir.replace(f"/mnt/{drive}", f"{drive.upper()}:")
+                windows_path = windows_path + "/eval"
                 windows_path = windows_path.replace("/", "\\")
                 self._send_command(f"setoption name EvalDir value {windows_path}")
             
+            # Initialize USI mode
+            if not self._initialize_usi():
+                return False
             # Start new game
             self._send_command("usinewgame")
-            print(5)
             return True
             
         except Exception as e:
@@ -65,27 +60,18 @@ class YaneuraOuEngine:
         Returns:
             bool: True if initialization successful, False otherwise.
         """
-        print("a")
         # Send USI command and wait for usiok
         self._send_command("usi")
-        print("b")
-        
         # Consume all initial messages until usiok
         if not self._wait_for_response("usiok", timeout):
-            print("c")
             return False
-        print("d")
-        
         # Give engine some time to initialize
         time.sleep(0.1)
         
         # Send isready command and wait for readyok
         self._send_command("isready")
-        print("e")
         if not self._wait_for_response("readyok", timeout):
-            print("f")
             return False
-        print("g")
         return True
 
     def _send_command(self, command: str):
