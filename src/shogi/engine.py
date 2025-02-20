@@ -5,13 +5,15 @@ from typing import List, Optional
 class YaneuraOuEngine:
     """Interface for the YaneuraOu shogi engine."""
     
-    def __init__(self, engine_path: str = "/mnt/e/SourceCode/app/yaneuraou/YaneuraOu_NNUE_halfKP256-V830Git_AVX2.exe"):
+    def __init__(self, engine_path: str = "/mnt/e/SourceCode/app/yaneuraou/YaneuraOu_NNUE_halfKP256-V830Git_AVX2.exe", think_time_ms: int = 1000):
         """Initialize YaneuraOu engine interface.
         
         Args:
             engine_path: Path to YaneuraOu executable.
+            think_time_ms: Thinking time limit per move in milliseconds.
         """
         self.engine_path = engine_path
+        self.think_time_ms = think_time_ms
         self.process: Optional[subprocess.Popen] = None
         self.position = "startpos"
 
@@ -121,17 +123,16 @@ class YaneuraOuEngine:
         self.position = sfen
         self._send_command(f"position {sfen}")
 
-    def get_position_evaluation(self, search_depth: int = 10, timeout: int = 5) -> float:
+    def get_position_evaluation(self, timeout: int = 5) -> float:
         """Get engine's evaluation for current position.
         
         Args:
-            search_depth: Search depth for evaluation.
             timeout: Maximum time to wait in seconds.
             
         Returns:
             float: Position evaluation in centipawns, or ±inf for mate.
         """
-        self._send_command(f"go depth {search_depth}")
+        self._send_command(f"go movetime {self.think_time_ms}")
         
         evaluation = 0.0
         start_time = time.time()
@@ -170,7 +171,7 @@ class YaneuraOuEngine:
         while time.time() - start_time < timeout:
             # Construct go command excluding known moves
             exclude_str = " searchmoves " + " ".join(legal_moves) if legal_moves else ""
-            self._send_command(f"go movetime 100{exclude_str}")
+            self._send_command(f"go movetime {self.think_time_ms}{exclude_str}")
             
             found_new_move = False
             while True:

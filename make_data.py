@@ -7,18 +7,19 @@ from pathlib import Path
 from src.shogi import YaneuraOuEngine
 from src.data import ShogiDataGenerator
 
-def main(num_games: int = 100, seed: int = 42):
+def main(num_games: int = 100, seed: int = 42, think_time_ms: int = 1000):
     """Generate training data from shogi games.
     
     Args:
         num_games: Number of games to generate.
         seed: Random seed for reproducibility.
+        think_time_ms: Thinking time limit per move in milliseconds.
     """
     # Set random seed
     random.seed(seed)
     
-    # Initialize shogi engine
-    engine = YaneuraOuEngine()
+    # Initialize shogi engine with thinking time limit
+    engine = YaneuraOuEngine(think_time_ms=think_time_ms)
     if not engine.start():
         raise RuntimeError("Failed to start YaneuraOu engine")
     
@@ -54,4 +55,4 @@ def main(num_games: int = 100, seed: int = 42):
 if __name__ == "__main__":
     # Create datasets directory if it doesn't exist
     Path("datasets").mkdir(exist_ok=True)
-    main(num_games=1)
+    main(num_games=1, think_time_ms=1000)  # Default 1 second thinking time
