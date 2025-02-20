@@ -35,7 +35,7 @@ def get_model_config():
         "model_name": "unsloth/Phi-4",
         "load_in_4bit": True,
         "fast_inference": True,
-        "gpu_memory_utilization": 0.5, # 0.6だとOOM
+        "gpu_memory_utilization": 0.7, # Increased from 0.5 to prevent vLLM memory override
         "target_modules": ["gate_proj", "up_proj", "down_proj"],
     }
 

@@ -34,7 +34,10 @@ class ModelFactory:
         # Patch FastLanguageModel for GRPO
         PatchFastRL("GRPO", FastLanguageModel)
         
-        # Initialize model and tokenizer
+        # Initialize model and tokenizer with forced memory settings
+        import os
+        os.environ["VLLM_FORCED_GPU_MEMORY"] = str(config.gpu_memory_utilization)
+        
         model, tokenizer = FastLanguageModel.from_pretrained(
             model_name=config.model_name,
             max_seq_length=config.max_seq_length,
@@ -42,6 +45,7 @@ class ModelFactory:
             fast_inference=config.fast_inference,
             max_lora_rank=config.lora_rank,
             gpu_memory_utilization=config.gpu_memory_utilization,
+            disable_exllama=True,  # Prevent memory optimizations that might override settings
         )
         
         # Configure LoRA
