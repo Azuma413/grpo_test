@@ -56,12 +56,15 @@ class ShogiDataGenerator:
         # Set initial position
         self.engine.set_position(current_position)
         
-        while not self._is_game_over(current_position):
+        while True:
+            print(1)
             # Save current position
             if current_position == "startpos":
+                print(2)
                 sfen = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b -"
                 hands = "なし"
             else:
+                print(3)
                 sfen = current_position.replace("position sfen ", "") if current_position.startswith("position sfen ") else current_position
                 if sfen.startswith("startpos moves"):
                     sfen = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b -"
@@ -73,12 +76,12 @@ class ShogiDataGenerator:
                 "hands": hands,
                 "move_number": move_number
             })
-            
+            print(4)
             # Get legal moves and randomly select next move
             legal_moves = self._get_legal_moves(current_position)
             if not legal_moves:
                 break
-                
+            print(5)
             next_move = random.choice(legal_moves)
             
             # Update current position
@@ -86,7 +89,7 @@ class ShogiDataGenerator:
                 current_position = f"position startpos moves {next_move}"
             else:
                 current_position = f"{current_position} {next_move}"
-            
+            print(6)
             # Update engine's position
             self.engine.set_position(current_position)
             move_number += 1
