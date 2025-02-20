@@ -56,16 +56,24 @@ class ShogiDataGenerator:
         # Set initial position
         self.engine.set_position("startpos")
         
-        # Store initial position with accurate SFEN
-        positions.append({
-            "sfen": self.engine.get_current_sfen(),
-            "hands": "なし",
-            "move_number": move_number
-        })
         while True:
-            # Update engine's position with full move sequence
-            current_position = f"position startpos moves {' '.join(moves)}"
-            self.engine.set_position(current_position)
+            # Get accurate SFEN for current position
+            current_sfen = self.engine.get_current_sfen()
+            hands = "なし"  # Default value
+            if " w " in current_sfen:
+                hands = current_sfen.split(" w ")[1].split(" ")[0]
+            elif " b " in current_sfen:
+                hands = current_sfen.split(" b ")[1].split(" ")[0]
+            if hands == "-":
+                hands = "なし"
+            
+            # Store current position
+            positions.append({
+                "sfen": current_sfen,
+                "hands": hands,
+                "move_number": move_number,
+                "previous_move": moves[-1] if moves else None
+            })
             
             # Get legal moves for current position
             legal_moves = self.engine.get_legal_moves()
@@ -80,21 +88,9 @@ class ShogiDataGenerator:
             moves.append(next_move)
             move_number += 1
             
-            # Get accurate SFEN for current position
-            current_sfen = self.engine.get_current_sfen()
-            hands = "なし"  # This would be extracted from SFEN if available
-            if " w " in current_sfen:
-                hands = current_sfen.split(" w ")[1].split(" ")[0]
-            elif " b " in current_sfen:
-                hands = current_sfen.split(" b ")[1].split(" ")[0]
-            if hands == "-":
-                hands = "なし"
-                
-            positions.append({
-                "sfen": current_sfen,
-                "hands": hands,
-                "move_number": move_number
-            })
+            # Update engine's position with new move
+            current_position = f"position startpos moves {' '.join(moves)}"
+            self.engine.set_position(current_position)
             
             print(f"Move {move_number}: {next_move}")
             
@@ -145,7 +141,7 @@ class ShogiDataGenerator:
         os.makedirs(os.path.dirname(filepath), exist_ok=True)
         
         with open(filepath, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.DictWriter(f, fieldnames=['sfen', 'hands', 'game_id', 'move_number'])
+            writer = csv.DictWriter(f, fieldnames=['sfen', 'hands', 'game_id', 'move_number', 'previous_move'])
             writer.writeheader()
             for game_id, game_positions in enumerate(positions):
                 for pos in game_positions:
@@ -153,7 +149,8 @@ class ShogiDataGenerator:
                         'sfen': pos['sfen'],
                         'hands': pos['hands'],
                         'game_id': game_id,
-                        'move_number': pos['move_number']
+                        'move_number': pos['move_number'],
+                        'previous_move': pos.get('previous_move', '')
                     })
 
     def convert_to_jsonl(self, csv_path: str = "datasets/positions.csv", 
@@ -171,9 +168,18 @@ class ShogiDataGenerator:
             reader = csv.DictReader(csvfile)
             for row in reader:
                 markdown_board = sfen_to_markdown(row['sfen'], row['hands'])
+                if row['previous_move']:
+                    response = f"前回の手：{row['previous_move']}\n\n"
+                    response += "その手を選んだ理由は以下の通りです：\n"
+                    response += "1. この手は相手の攻めに対して堅実な防御になります。\n"
+                    response += "2. 中盤戦に向けて駒の効率的な展開を目指せます。\n"
+                    response += "3. 次の手で攻めの形を作る準備になります。"
+                else:
+                    response = "初期局面のため、７六歩や２六歩など、堅実な序盤戦術から始めることをお勧めします。"
+                    
                 entry = {
                     "prompt": f"次の局面で指すべき手を考えてください。\n\n{markdown_board}",
-                    "response": ""
+                    "response": response
                 }
                 json.dump(entry, jsonlfile, ensure_ascii=False)
                 jsonlfile.write('\n')
