@@ -5,7 +5,7 @@ from typing import List, Optional
 class YaneuraOuEngine:
     """Interface for the YaneuraOu shogi engine."""
     
-    def __init__(self, engine_path: str = "/mnt/e/SourceCode/app/yaneuraou/YaneuraOu_NNUE_halfKP256-V830Git_AVX2.exe"):
+    def __init__(self, engine_path: str = "E:/SourceCode/app/yaneuraou/YaneuraOu_NNUE_halfKP256-V830Git_AVX2.exe"):
         """Initialize YaneuraOu engine interface.
         
         Args:
@@ -28,7 +28,8 @@ class YaneuraOuEngine:
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True
+                text=True,
+                bufsize=1  # Line buffering
             )
             print(2)
             
@@ -59,10 +60,16 @@ class YaneuraOuEngine:
         # Send USI command and wait for usiok
         self._send_command("usi")
         print("b")
+        
+        # Consume all initial messages until usiok
         if not self._wait_for_response("usiok", timeout):
             print("c")
             return False
         print("d")
+        
+        # Give engine some time to initialize
+        time.sleep(0.1)
+        
         # Send isready command and wait for readyok
         self._send_command("isready")
         print("e")
@@ -79,8 +86,11 @@ class YaneuraOuEngine:
             command: USI command to send.
         """
         if self.process and self.process.poll() is None:
-            self.process.stdin.write(f"{command}\n")
-            self.process.stdin.flush()
+            try:
+                self.process.stdin.write(f"{command}\n")
+                self.process.stdin.flush()
+            except Exception as e:
+                print(f"Error sending command: {e}")
 
     def _wait_for_response(self, expected: str, timeout: int = 10) -> bool:
         """Wait for an expected response from the engine.
@@ -94,11 +104,19 @@ class YaneuraOuEngine:
         """
         start_time = time.time()
         while time.time() - start_time < timeout:
-            text = self.process.stdout.readline().strip()
-            print(text)
-            if text == expected:
-            # if self.process.stdout.readline().strip() == expected:
-                return True
+            if not self.process or self.process.poll() is not None:
+                print("Engine process is not running")
+                return False
+                
+            try:
+                text = self.process.stdout.readline().strip()
+                print(f"Engine response: {text}")
+                if text == expected:
+                    return True
+            except Exception as e:
+                print(f"Error reading response: {e}")
+                return False
+        print(f"Timeout waiting for {expected}")
         return False
 
     def set_position(self, sfen: str):
