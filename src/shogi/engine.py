@@ -5,7 +5,7 @@ from typing import List, Optional
 class YaneuraOuEngine:
     """Interface for the YaneuraOu shogi engine."""
     
-    def __init__(self, engine_path: str = "E:/SourceCode/app/yaneuraou/YaneuraOu_NNUE_halfKP256-V830Git_AVX2.exe"):
+    def __init__(self, engine_path: str = "/mnt/e/SourceCode/app/yaneuraou/YaneuraOu_NNUE_halfKP256-V830Git_AVX2.exe"):
         """Initialize YaneuraOu engine interface.
         
         Args:
