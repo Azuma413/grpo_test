@@ -30,12 +30,12 @@ def get_training_config(lora_rank: int):
 
 def get_model_config():
     return {
-        "max_seq_length": 512,
-        "lora_rank": 16,
-        "model_name": "unsloth/Phi-4",
+        "max_seq_length": 192,
+        "lora_rank": 8,
+        "model_name": "unsloth/Qwen2.5-7B",
         "load_in_4bit": True,
         "fast_inference": True,
-        "gpu_memory_utilization": 0.5, # 0.6だとOOM
+        "gpu_memory_utilization": 0.6, # 0.6だとOOM
         "target_modules": ["gate_proj", "up_proj", "down_proj"],
     }
 
