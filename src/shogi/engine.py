@@ -22,6 +22,7 @@ class YaneuraOuEngine:
             bool: True if engine started successfully, False otherwise.
         """
         try:
+            print(1)
             self.process = subprocess.Popen(
                 [self.engine_path],
                 stdin=subprocess.PIPE,
@@ -29,13 +30,16 @@ class YaneuraOuEngine:
                 stderr=subprocess.PIPE,
                 text=True
             )
+            print(2)
             
             # Initialize USI mode
             if not self._initialize_usi():
+                print(3)
                 return False
-            
+            print(4)
             # Start new game
             self._send_command("usinewgame")
+            print(5)
             return True
             
         except Exception as e:
@@ -51,16 +55,21 @@ class YaneuraOuEngine:
         Returns:
             bool: True if initialization successful, False otherwise.
         """
+        print("a")
         # Send USI command and wait for usiok
         self._send_command("usi")
+        print("b")
         if not self._wait_for_response("usiok", timeout):
+            print("c")
             return False
-            
+        print("d")
         # Send isready command and wait for readyok
         self._send_command("isready")
+        print("e")
         if not self._wait_for_response("readyok", timeout):
+            print("f")
             return False
-            
+        print("g")
         return True
 
     def _send_command(self, command: str):
@@ -85,7 +94,10 @@ class YaneuraOuEngine:
         """
         start_time = time.time()
         while time.time() - start_time < timeout:
-            if self.process.stdout.readline().strip() == expected:
+            text = self.process.stdout.readline().strip()
+            print(text)
+            if text == expected:
+            # if self.process.stdout.readline().strip() == expected:
                 return True
         return False
 
