@@ -182,12 +182,16 @@ def sfen_to_markdown(sfen: str, hands: str) -> str:
     markdown = "| 9 | 8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 |\n"
     markdown += "|---|---|---|---|---|---|---|---|---|\n"
     
-    # Piece conversion map
+    # Piece conversion map (both uppercase for your pieces and lowercase for opponent's pieces)
     piece_map = {
         'L': '香', 'N': '桂', 'S': '銀', 'G': '金', 'K': '玉', 
         'B': '角', 'R': '飛', 'P': '歩',
+        'l': '香', 'n': '桂', 's': '銀', 'g': '金', 'k': '玉', 
+        'b': '角', 'r': '飛', 'p': '歩',
         '+L': '成香', '+N': '成桂', '+S': '成銀', 
-        '+B': '馬', '+R': '龍', '+P': 'と'
+        '+B': '馬', '+R': '龍', '+P': 'と',
+        '+l': '成香', '+n': '成桂', '+s': '成銀', 
+        '+b': '馬', '+r': '龍', '+p': 'と'
     }
     
     # Convert each row

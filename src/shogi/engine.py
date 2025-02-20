@@ -188,7 +188,7 @@ class YaneuraOuEngine:
         return evaluation
 
     def get_legal_moves(self, timeout: int = 1) -> List[str]:
-        """Get list of legal moves for current position using a quick single search.
+        """Get list of legal moves for current position using the moves command.
         
         Args:
             timeout: Maximum time to wait for engine response in seconds.
@@ -202,35 +202,24 @@ class YaneuraOuEngine:
         legal_moves = set()
         start_time = time.time()
         
-        # Use minimal search time to get quick move generation
-        self._send_command(f"go movetime {self.think_time_ms}")
+        # Send moves command to get all legal moves
+        self._send_command("moves")
         
         while time.time() - start_time < timeout:
             try:
                 line = self.process.stdout.readline().strip()
                 if not line:
                     continue
-                
-                # Stop when we get the bestmove
-                if line.startswith("bestmove"):
-                    move = line.split()[1]
-                    if move != "none":
-                        legal_moves.add(move)
-                    break
-                
-                # Process multipv and pv lines for moves
-                if line.startswith("info") and "pv" in line:
-                    parts = line.split()
-                    try:
-                        pv_index = parts.index("pv")
-                        # Only take the first move from each line
-                        move = parts[pv_index + 1]
+                    
+                # Split the moves line into individual moves
+                if not line.startswith("info") and not line.startswith("bestmove"):
+                    moves = line.split()
+                    for move in moves:
                         if move != "none":
                             legal_moves.add(move)
-                    except (ValueError, IndexError):
-                        continue
-                        
-            except Exception:
+                
+            except Exception as e:
+                print(f"Error reading moves: {e}")
                 break
         
         return list(legal_moves)
