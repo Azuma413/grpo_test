@@ -1,23 +1,24 @@
 from unsloth import FastLanguageModel, PatchFastRL
 PatchFastRL("GRPO", FastLanguageModel)
-from unsloth import is_bfloat16_supported
-import torch
-max_seq_length = 512 # Can increase for longer reasoning traces
-lora_rank = 16 # Larger rank = smarter, but slower
+max_seq_length = 1024 # Can increase for longer reasoning traces
+lora_rank = 64 # Larger rank = smarter, but slower
 
 model, tokenizer = FastLanguageModel.from_pretrained(
-    model_name = "unsloth/Phi-4",
+    model_name = "Qwen/Qwen2.5-3B-Instruct",
     max_seq_length = max_seq_length,
     load_in_4bit = True, # False for LoRA 16bit
     fast_inference = True, # Enable vLLM fast inference
     max_lora_rank = lora_rank,
-    gpu_memory_utilization = 0.7, # Reduce if out of memory
+    gpu_memory_utilization = 0.6, # Reduce if out of memory
 )
 
 model = FastLanguageModel.get_peft_model(
     model,
     r = lora_rank, # Choose any number > 0 ! Suggested 8, 16, 32, 64, 128
-    target_modules = ["gate_proj", "up_proj", "down_proj",],
+    target_modules = [
+        "q_proj", "k_proj", "v_proj", "o_proj",
+        "gate_proj", "up_proj", "down_proj",
+    ],
     lora_alpha = lora_rank,
     use_gradient_checkpointing = "unsloth", # Enable long context finetuning
     random_state = 3407,
@@ -43,7 +44,7 @@ def generate_text(input, lora=None, system_prompt=None):
     output = model.fast_generate(
         [text],
         sampling_params = sampling_params,
-        lora_request = lora,
+        lora_request = model.load_lora(lora) if lora is not None else None,
     )[0].outputs[0].text
     return output
 
@@ -68,15 +69,26 @@ def main():
 後手：歩 歩
 
 """
+    system_prompt = """
+Respond in the following format:
+<reasoning>
+...
+</reasoning>
+<answer>
+...
+</answer>
+
+answerには１三歩のように将棋の指し手のみを記入してください。
+"""
     # Generate moves with and without LoRA
     print("\nTesting model outputs:")
     print("-" * 50)
     print("Without LoRA:")
-    output = generate_text(test_board)
+    output = generate_text(test_board, system_prompt=system_prompt)
     print(output)
     print("-" * 50)
     # With LoRA
-    output = generate_text(test_board, lora="grpo_saved_lora")
+    output = generate_text(test_board, lora="grpo_saved_lora", system_prompt=system_prompt)
     print("With LoRA:")
     print(output)
     print("-" * 50)

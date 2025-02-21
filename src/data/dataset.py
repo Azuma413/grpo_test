@@ -19,6 +19,12 @@ Respond in the following format:
 <answer>
 ...
 </answer>
+
+answerには"１三歩", "３六銀"のように将棋の指し手のみを記入してください。
+例:
+<answer>
+６四桂
+</answer>
 """
         self.data: List[Dict] = []
         

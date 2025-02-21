@@ -7,7 +7,7 @@ from src.shogi.engine import YaneuraOuEngine
 class RewardFunctions():
     """Reward function based on YaneuraOu engine's position evaluation."""
     
-    def __init__(self, engine_path: str = "/mnt/e/SourceCode/app/yaneuraou/YaneuraOu_NNUE_halfKP256-V830Git_AVX2.exe", normalization_factor: float = 1000.0):
+    def __init__(self, engine_path: str = "/mnt/e/SourceCode/app/yaneuraou/YaneuraOu_NNUE_halfKP256-V830Git_AVX2.exe", normalization_factor: float = 100.0):
         """Initialize rewards with YaneuraOu engine.
         
         Args:
@@ -23,79 +23,89 @@ class RewardFunctions():
         self._position_pattern = r"[一二三四五六七八九]"  # Position in kanji
         self._piece_pattern = r"[歩香桂銀金角飛玉と馬龍]$"  # Piece types
     
-    def xml_reward(self, completions: List[Dict]) -> List[float]:
+    def xml_reward(self, prompts, completions: List[Dict], **kwargs) -> List[float]:
         """
         出力がXML形式になっているかどうかを評価する
+        0~0.5
         """
         contents = [completion[0]["content"] for completion in completions]
         return [self._validate_xml_structure(c) for c in contents]
 
-    def strict_format_reward(self, completions: List[Dict]) -> List[float]:
+    def strict_format_reward(self, prompts, completions: List[Dict], **kwargs) -> List[float]:
         """
         出力が指定された形式になっているかどうかを厳しく評価する
+        0~0.5
         """
         pattern = r"^<reasoning>\n.*?\n</reasoning>\n<answer>\n.*?\n</answer>\n$"
         responses = [completion[0]["content"] for completion in completions]
         return [0.5 if re.match(pattern, r, re.DOTALL) else 0.0 for r in responses]
 
-    def soft_format_reward(self, completions: List[Dict]) -> List[float]:
+    def soft_format_reward(self, prompts, completions: List[Dict], **kwargs) -> List[float]:
         """
         出力が指定された形式になっているかどうかをゆるく評価する
+        0~0.5
         """
         pattern = r"<reasoning>.*?</reasoning>\s*<answer>.*?</answer>"
         responses = [completion[0]["content"] for completion in completions]
         return [0.5 if re.match(pattern, r, re.DOTALL) else 0.0 for r in responses]
 
-    def soft_shogi_format_reward(self, completions: List[Dict]) -> List[float]:
+    def soft_shogi_format_reward(self, prompts, completions: List[Dict], **kwargs) -> List[float]:
         """
         将棋の指し手の形式になっているかどうかをゆるく評価する
+        0~1
         """
         pattern = r"^[１-９7-9][一二三四五六七八九123456789][歩香桂銀金角飛玉と馬龍]$"
-        responses = [self._extract_xml_answer(completion[0]["content"]) for completion in completions]
-        return [0.5 if re.match(pattern, r) else 0.0 for r in responses]
+        rewards = []
+        for completion in completions:
+            try:
+                response = self._extract_xml_answer(completion[0]["content"])
+                reward = 1.0 if re.match(pattern, response) else 0.0
+            except (TypeError, AttributeError):
+                reward = 0.0
+            rewards.append(reward)
+        return rewards
 
-    def strict_shogi_reward(self, completions: List[Dict], answers: List[str]) -> List[float]:
+    def strict_shogi_reward(self, prompts, completions: List[Dict], answer: List[str], **kwargs) -> List[float]:
         """
         将棋の指し手が正しいかどうかを厳しく評価する
+        0~1
         """
         # 指し手のリストを取得
         responses = [self._extract_xml_answer(completion[0]["content"]) for completion in completions]
         rewards = []
         
-        for response, sfen in zip(responses, answers):
+        for response, sfen in zip(responses, answer):
             # Check basic format first
-            if (re.match(self._number_pattern, response) and
-                re.search(self._position_pattern, response) and
-                re.search(self._piece_pattern, response)):
-                reward = 0.5
-                # responseをUSI形式に変換
-                move = move_to_usi(response)
-                # Validate move with engine
-                if self.engine.is_legal_move(sfen, move):
-                    reward = 1.0
-            else:
+            try:
+                if (re.match(self._number_pattern, response) and
+                    re.search(self._position_pattern, response) and
+                    re.search(self._piece_pattern, response)):
+                    reward = 0.5
+                    # responseをUSI形式に変換
+                    move = move_to_usi(response)
+                    # Validate move with engine
+                    if self.engine.is_legal_move(sfen, move):
+                        reward = 1.0
+                else:
+                    reward = 0.0
+            except Exception:
                 reward = 0.0
             rewards.append(reward)
         
         return rewards
 
-    def evaluation_reward(self, completions: List[Dict], answers: List[str]) -> List[float]:
-        """Calculate reward based on engine evaluation of positions after moves.
-        
-        Args:
-            prompts: List of input prompts (not used)
-            completions: List of model completions
-            answer: Current board position in SFEN format
-            
-        Returns:
-            List[float]: Normalized evaluation scores in range [-1.0, 1.0]
+    def evaluation_reward(self, prompts, completions: List[Dict], answer: List[str], **kwargs) -> List[float]:
+        """
+        将棋の指し手の評価値を取得する
+        0~
         """
         rewards = []
         
-        for completion, sfen in zip(completions, answers):
+        for completion, sfen in zip(completions, answer):
             try:
                 # Extract move from completion
                 response = self._extract_move(completion[0]["content"])
+                print("指し手: ", response)
                 move = move_to_usi(response)
                 # sfenの局面でmoveの評価値を取得
                 score = self.engine.get_move_score(move, sfen)
@@ -104,7 +114,7 @@ class RewardFunctions():
                 rewards.append(reward)
             except Exception:
                 # Invalid moves get minimum reward
-                rewards.append(-1.0)
+                rewards.append(0.0)
         return rewards
     
     def _validate_xml_structure(self, text: str) -> float:
@@ -125,7 +135,7 @@ class RewardFunctions():
             count += 0.125
             # Additional penalty for content after final tag
             count -= (len(text.split("\n</answer>")[-1]) - 1) * 0.001
-        return max(0.0, count)
+        return max(0.0, count) # 最大で0.5まで
     
     def _extract_move(self, content: str) -> Optional[str]:
         """Extract move from completion content.
@@ -155,10 +165,10 @@ class RewardFunctions():
         <answer>タグ内の指し手を抽出する
         """
         try:
-            pattern = r'<answer)>(.*?)</answer>'
+            pattern = r'<answer>(.*?)</answer>'
             match = re.search(pattern, content)
             if match:
-                return match.group(2).strip()
+                return match.group(1).strip()
             return None
         except Exception:
             return None
