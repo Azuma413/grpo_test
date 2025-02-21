@@ -214,7 +214,34 @@ def sfen_to_markdown(sfen: str, hands: str) -> str:
         
         markdown += markdown_row + "\n"
     
+    # Convert and separate captured pieces
+    sente_pieces = []
+    gote_pieces = []
+    i = 0
+    while i < len(hands):
+        count = 1
+        # Get count if present
+        while i < len(hands) and hands[i].isdigit():
+            count = int(hands[i])
+            i += 1
+        
+        if i < len(hands):
+            piece = hands[i]
+            piece_kanji = piece_map.get(piece.upper(), piece)
+            if piece.isupper():
+                sente_pieces.extend([piece_kanji] * count)
+            else:
+                gote_pieces.extend([piece_kanji] * count)
+            i += 1
+    
     # Add captured pieces
-    markdown += f"\n持ち駒：{hands}\n"
+    markdown += "\n持ち駒："
+    if sente_pieces:
+        markdown += "\n先手：" + " ".join(sente_pieces)
+    if gote_pieces:
+        markdown += "\n後手：" + " ".join(gote_pieces)
+    if not sente_pieces and not gote_pieces:
+        markdown += "なし"
+    markdown += "\n"
     
     return markdown

@@ -141,7 +141,7 @@ class ShogiDataGenerator:
                 player = "先手" if row['player'] == "sente" else "後手"
                 entry = {
                     "prompt": f"貴方は{player}のプレイヤーです．次の局面で指すべき手を考えてください。\n\n{markdown_board}",
-                    "response": ""
+                    "response": row["sfen"]
                 }
                 json.dump(entry, jsonlfile, ensure_ascii=False)
                 jsonlfile.write('\n')

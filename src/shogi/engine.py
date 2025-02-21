@@ -303,11 +303,6 @@ class YaneuraOuEngine:
                 text=True,
                 bufsize=1
             )
-            # Set non-blocking mode for stdout
-            # fd = self.process.stdout.fileno()
-            # fl = fcntl.fcntl(fd, fcntl.F_GETFL)
-            # fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
-
             # 出力モニターを開始
             self.output_monitor = OutputMonitor(self.process, self.message_queue)
             self.output_monitor.start()
