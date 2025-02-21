@@ -1,0 +1,101 @@
+[2025-02-21 17:13:14.777645] id name YaneuraOu NNUE V8.30Git 64AVX2 TOURNAMENT
+[2025-02-21 17:13:14.777761] id author by yaneurao
+[2025-02-21 17:13:14.777780] option name Threads type spin default 4 min 1 max 1024
+[2025-02-21 17:13:14.777799] option name USI_Hash type spin default 1024 min 1 max 33554432
+[2025-02-21 17:13:14.777808] option name USI_Ponder type check default false
+[2025-02-21 17:13:14.777814] option name Stochastic_Ponder type check default false
+[2025-02-21 17:13:14.777820] option name MultiPV type spin default 1 min 1 max 600
+[2025-02-21 17:13:14.777826] option name NetworkDelay type spin default 120 min 0 max 10000
+[2025-02-21 17:13:14.777832] option name NetworkDelay2 type spin default 1120 min 0 max 10000
+[2025-02-21 17:13:14.777838] option name MinimumThinkingTime type spin default 2000 min 1000 max 100000
+[2025-02-21 17:13:14.777844] option name SlowMover type spin default 100 min 1 max 1000
+[2025-02-21 17:13:14.777850] option name MaxMovesToDraw type spin default 0 min 0 max 100000
+[2025-02-21 17:13:14.777858] option name DepthLimit type spin default 0 min 0 max 2147483647
+[2025-02-21 17:13:14.777863] option name NodesLimit type spin default 0 min 0 max 9223372036854775807
+[2025-02-21 17:13:14.777869] option name EvalDir type string default eval
+[2025-02-21 17:13:14.777875] option name WriteDebugLog type string default
+[2025-02-21 17:13:14.777881] option name GenerateAllLegalMoves type check default false
+[2025-02-21 17:13:14.777903] option name EnteringKingRule type combo default CSARule27 var NoEnteringKing var CSARule24 var CSARule24H var CSARule27 var CSARule27H var TryRule
+[2025-02-21 17:13:14.777946] option name ThreadIdOffset type spin default 0 min 0 max 23
+[2025-02-21 17:13:14.777961] option name LargePageEnable type check default true
+[2025-02-21 17:13:14.777969] option name USI_OwnBook type check default true
+[2025-02-21 17:13:14.777975] option name NarrowBook type check default false
+[2025-02-21 17:13:14.777980] option name BookMoves type spin default 16 min 0 max 10000
+[2025-02-21 17:13:14.777986] option name BookIgnoreRate type spin default 0 min 0 max 100
+[2025-02-21 17:13:14.777993] option name BookFile type combo default standard_book.db var no_book var standard_book.db var yaneura_book1.db var yaneura_book2.db var yaneura_book3.db var yaneura_book4.db var user_book1.db var user_book2.db var user_book3.db var book.bin
+[2025-02-21 17:13:14.778000] option name BookDir type string default book
+[2025-02-21 17:13:14.778022] option name BookEvalDiff type spin default 30 min 0 max 99999
+[2025-02-21 17:13:14.778036] option name BookEvalBlackLimit type spin default 0 min -99999 max 99999
+[2025-02-21 17:13:14.778044] option name BookEvalWhiteLimit type spin default -140 min -99999 max 99999
+[2025-02-21 17:13:14.778050] option name BookDepthLimit type spin default 16 min 0 max 99999
+[2025-02-21 17:13:14.778056] option name BookOnTheFly type check default false
+[2025-02-21 17:13:14.778063] option name ConsiderBookMoveCount type check default false
+[2025-02-21 17:13:14.778069] option name BookPvMoves type spin default 8 min 1 max 246
+[2025-02-21 17:13:14.778090] option name IgnoreBookPly type check default false
+[2025-02-21 17:13:14.778120] option name FlippedBook type check default true
+[2025-02-21 17:13:14.778149] option name DrawValueBlack type spin default -2 min -30000 max 30000
+[2025-02-21 17:13:14.778180] option name DrawValueWhite type spin default -2 min -30000 max 30000
+[2025-02-21 17:13:14.778210] option name PvInterval type spin default 300 min 0 max 100000000
+[2025-02-21 17:13:14.778224] option name ResignValue type spin default 99999 min 0 max 99999
+[2025-02-21 17:13:14.778232] option name ConsiderationMode type check default true
+[2025-02-21 17:13:14.778238] option name OutputFailLHPV type check default true
+[2025-02-21 17:13:14.778244] option name FV_SCALE type spin default 16 min 1 max 128
+[2025-02-21 17:13:14.778251] usiok
+[2025-02-21 17:13:14.972087] info string Hash table allocation: Windows Large Pages used.
+[2025-02-21 17:13:14.973487] info string EvalDirectory = E:/SourceCode/app/yaneuraou\eval
+[2025-02-21 17:13:14.981672] info string loading eval file : E:/SourceCode/app/yaneuraou\eval/nn.bin
+[2025-02-21 17:13:15.271540] info string read book file : E:/SourceCode/app/yaneuraou\book/standard_book.db
+[2025-02-21 17:13:15.540781] info string read book done. number of positions = 130182
+[2025-02-21 17:13:15.541441] info string USI_Hash : Start clearing with 4 threads , Hash size =  1024[MB]
+[2025-02-21 17:13:15.567174] info string USI_Hash : Finish clearing.
+[2025-02-21 17:13:15.633809] readyok
+[2025-02-21 17:13:15.809765] info string USI_Hash : Start clearing with 4 threads , Hash size =  4096[MB]
+[2025-02-21 17:13:15.917418] info string USI_Hash : Finish clearing.
+[2025-02-21 17:13:16.007483] readyok
+[2025-02-21 17:13:16.184882] info string USI_Hash : Start clearing with 4 threads , Hash size =  4096[MB]
+[2025-02-21 17:13:16.291370] info string USI_Hash : Finish clearing.
+[2025-02-21 17:13:16.363340] readyok
+[2025-02-21 17:13:16.537693] info string USI_Hash : Start clearing with 4 threads , Hash size =  4096[MB]
+[2025-02-21 17:13:16.646804] info string USI_Hash : Finish clearing.
+[2025-02-21 17:13:16.718017] readyok
+[2025-02-21 17:13:16.907185] info string USI_Hash : Start clearing with 4 threads , Hash size =  4096[MB]
+[2025-02-21 17:13:17.021029] info string USI_Hash : Finish clearing.
+[2025-02-21 17:13:17.074807] readyok
+[2025-02-21 17:13:17.252646] info string USI_Hash : Start clearing with 4 threads , Hash size =  4096[MB]
+[2025-02-21 17:13:17.365629] info string USI_Hash : Finish clearing.
+[2025-02-21 17:13:17.431255] readyok
+[2025-02-21 17:13:17.606379] info string USI_Hash : Start clearing with 4 threads , Hash size =  4096[MB]
+[2025-02-21 17:13:17.725592] info string USI_Hash : Finish clearing.
+[2025-02-21 17:13:17.788069] readyok
+[2025-02-21 17:13:17.788203] info multipv 1 score cp 0 depth 32 pv 7g7f 3c3d 6g6f 4c4d 2h7h 3a3b 5i4h 3b4c (70.27%)
+[2025-02-21 17:13:17.788429] info multipv 2 score cp 0 depth 32 pv 2g2f 3c3d 3i4h 8b4b 5g5f 5a6b 7g7f 4c4d (27.23%)
+[2025-02-21 17:13:17.788532] info multipv 3 score cp 0 depth 32 pv 5g5f 3c3d 2h5h 8b3b 7i6h 5a6b 6h5g 7a7b (1.01%)
+[2025-02-21 17:13:17.788644] info multipv 4 score cp 0 depth 32 pv 6i7h 3c3d 7g7f 8b4b 8h7g 9c9d 6g6f 7a7b (0.31%)
+[2025-02-21 17:13:17.788739] info multipv 5 score cp 0 depth 32 pv 3i4h 3c3d 2g2f 5c5d 7g7f 2b8h+ 7i8h 8b2b (0.31%)
+[2025-02-21 17:13:17.788850] info multipv 6 score cp 0 depth 32 pv 6g6f 3c3d 7g7f 8b3b 5g5f 5a6b 3i4h 6b7b (0.28%)
+[2025-02-21 17:13:17.788964] info multipv 7 score cp 0 depth 32 pv 7i6h 3c3d 8h7i 8c8d 6i7h 8d8e 3i4h 7a7b (0.12%)
+[2025-02-21 17:13:17.789050] info multipv 8 score cp 0 depth 32 pv 2h6h 3c3d 7g7f 7a6b 5i4h 5a4b 8h2b+ 3a2b (0.09%)
+[2025-02-21 17:13:17.789114] info multipv 9 score cp 0 depth 32 pv 3g3f 8c8d 7g7f 3c3d 8h2b+ 3a2b 7i8h 7a6b (0.07%)
+[2025-02-21 17:13:17.789174] info multipv 10 score cp 0 depth 32 pv 9g9f 3c3d 7g7f 8c8d 6g6f 7a6b 7i7h 5c5d (0.07%)
+[2025-02-21 17:13:17.789236] info multipv 11 score cp 0 depth 32 pv 1g1f 3c3d 7g7f 5c5d 2g2f 5d5e 3i4h 8b5b (0.07%)
+[2025-02-21 17:13:17.789298] info multipv 12 score cp 0 depth 32 pv 3i3h 3c3d 4g4f 8c8d 6i7h 8d8e 3h4g 7a6b (0.06%)
+[2025-02-21 17:13:17.789346] info multipv 13 score cp 0 depth 32 pv 2h7h 8c8d 7g7f 8d8e 8h7g 3c3d 6g6f 7a6b (0.06%)
+[2025-02-21 17:13:17.789415] info multipv 14 score cp 0 depth 32 pv 6i5h 3c3d 3i4h 8c8d 7i7h 8d8e 8h7i 3a4b (0.02%)
+[2025-02-21 17:13:17.789474] info multipv 15 score cp 0 depth 32 pv 5i6h 8c8d 7g7f 8d8e 8h7g 3a4b 2g2f 7a6b (0.01%)
+[2025-02-21 17:13:17.789521] info multipv 16 score cp 0 depth 32 pv 4i5h 8c8d 7g7f 7a7b 6g6f 5a6b 5h6g 6b7a (0.00%)
+[2025-02-21 17:13:17.789593] info multipv 17 score cp 0 depth 32 pv 4g4f 4c4d 7g7f 8b4b 3i4h 5a6b 4h4g 6b7b (0.00%)
+[2025-02-21 17:13:17.789641] info depth 0 seldepth 0 score cp 0 nodes 137 nps 68500 hashfull 0 time 2 pv 6i7h 3c3d
+[2025-02-21 17:13:17.789661] bestmove 6i7h ponder 3c3d
+[2025-02-21 17:13:17.976367] info string USI_Hash : Start clearing with 4 threads , Hash size =  4096[MB]
+[2025-02-21 17:13:18.092372] info string USI_Hash : Finish clearing.
+[2025-02-21 17:13:18.143024] readyok
+[2025-02-21 17:13:18.318996] info string USI_Hash : Start clearing with 4 threads , Hash size =  4096[MB]
+[2025-02-21 17:13:18.424857] info string USI_Hash : Finish clearing.
+[2025-02-21 17:13:18.500652] readyok
+[2025-02-21 17:13:18.677554] info string USI_Hash : Start clearing with 4 threads , Hash size =  4096[MB]
+[2025-02-21 17:13:18.794676] info string USI_Hash : Finish clearing.
+[2025-02-21 17:13:18.857685] readyok
+[2025-02-21 17:13:19.033830] info string USI_Hash : Start clearing with 4 threads , Hash size =  4096[MB]
+[2025-02-21 17:13:19.144980] info string USI_Hash : Finish clearing.
+[2025-02-21 17:13:19.229760] readyok
+[2025-02-21 17:13:19.411688] info string USI_Hash : Start clearing with 4 threads , Hash size =  4096[MB]

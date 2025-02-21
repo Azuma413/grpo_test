@@ -41,7 +41,7 @@ class ShogiDataGenerator:
         total_positions = sum(len(game_pos) for game_pos in all_positions)
         print(f"\nGenerated total of {total_positions} positions from {len(all_positions)} successful games")
         
-        return all_positions
+        return all_positions # これが良くない
 
     def _generate_game_positions(self) -> List[Dict[str, Any]]:
         """Generate all positions from a single game.
@@ -53,37 +53,69 @@ class ShogiDataGenerator:
         moves = []
         move_number = 0
         
-        # Set initial position and store it
-        self.engine.set_position("startpos")
-        current_sfen = self.engine.get_current_sfen()
+        # Set initial position
+        initial_position = "position startpos"
+        self.engine._send_command(initial_position)
+        self.engine._send_command("isready")
+        if not self.engine.message_queue.wait_for_type('readyok', timeout=1.0):
+            print("Failed to set initial position")
+            return []
+        
+        # Get initial SFEN and store position
+        current_sfen = self.engine.get_current_sfen(initial_position)
         positions.append({
             "sfen": current_sfen,
             "hands": "なし",
             "move_number": move_number,
-            "previous_move": None
+            "previous_move": ""
         })
         
         while True:
-            move_number += 1
+            # Update engine position and ensure sync
+            current_position = f"position startpos moves {' '.join(moves)}"
             
-            # Get legal moves for current position
-            legal_moves = self.engine.get_legal_moves()
+            # Clear any pending messages and set position
+            self.engine.message_queue.clear()
+            print(f"\nSetting position: {current_position}")
+            self.engine._send_command(current_position)
+            
+            # Wait for engine to be ready
+            self.engine._send_command("isready")
+            if not self.engine.message_queue.wait_for_type('readyok', timeout=1.0):
+                print("Failed to sync engine before move")
+                # Try one more time with longer timeout
+                self.engine.message_queue.clear()
+                self.engine._send_command("isready")
+                if not self.engine.message_queue.wait_for_type('readyok', timeout=2.0):
+                    print("Engine sync failed twice, stopping game")
+                    break
+            
+            # Get best move for current position with increased timeout
+            next_move = self.engine.get_best_move(timeout=2.0)
             
             # Check for game end
-            if not legal_moves:
+            if next_move == "none":
                 print("Game over")
                 break
-                
-            # Select next move
-            next_move = random.choice(legal_moves)
+            
+            move_number += 1
             moves.append(next_move)
+            print(f"Move {move_number}: {next_move}")
             
-            # Update engine's position with new move
-            current_position = f"position startpos moves {' '.join(moves)}"
-            self.engine.set_position(current_position)
+            # Update SFEN after the move by notifying engine
+            if not self.engine._update_position_sfen(next_move):
+                print("Failed to update engine position")
+                break
+            current_sfen = self.engine._position_sfen
             
-            # Get accurate SFEN for updated position
-            current_sfen = self.engine.get_current_sfen()
+            # Verify engine is still responsive
+            self.engine.message_queue.clear()
+            self.engine._send_command("isready")
+            if not self.engine.message_queue.wait_for_type('readyok', timeout=1.0):
+                print("Engine became unresponsive after position update")
+                break
+            
+            # Extract hands information
             hands = "なし"  # Default value
             if " w " in current_sfen:
                 hands = current_sfen.split(" w ")[1].split(" ")[0]
@@ -102,6 +134,14 @@ class ShogiDataGenerator:
             
             print(f"Move {move_number}: {next_move}")
             
+            # Make sure the engine is in sync with our position
+            if not self.engine._send_command("isready"):
+                print("Engine sync error")
+                break
+            if not self.engine.message_queue.wait_for_type('readyok', timeout=0.2):
+                print("Engine sync error")
+                break
+            
             # Check for game end conditions
             # if self._is_game_over(current_position):
             #     break
@@ -111,7 +151,7 @@ class ShogiDataGenerator:
             # if move_number >= 200:  # Typical shogi games rarely exceed 200 moves
                 break
         
-        return positions
+        return positions # これが良くない
 
     def _is_game_over(self, position: str) -> bool:
         """Check if the game should end.
@@ -122,23 +162,8 @@ class ShogiDataGenerator:
         Returns:
             bool: True if game should end, False to continue.
         """
-        # Get legal moves first - if none, game is over
-        legal_moves = self._get_legal_moves(position)
-        if not legal_moves:
-            return True
-        return False
-
-    def _get_legal_moves(self, position: str) -> List[str]:
-        """Get list of legal moves for a position.
-        
-        Args:
-            position: Position in SFEN format.
-            
-        Returns:
-            List[str]: List of legal moves in USI format.
-        """
-        self.engine.set_position(position)
-        return self.engine.get_legal_moves()
+        self.engine.get_current_sfen(position)  # This updates engine's position state
+        return self.engine.get_best_move() == "none"
 
     def save_positions_csv(self, positions: List[List[Dict]], filepath: str = "datasets/positions.csv"):
         """Save generated positions to CSV file.

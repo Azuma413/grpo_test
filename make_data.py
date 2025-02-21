@@ -19,9 +19,13 @@ def main(num_games: int = 100, seed: int = 42, think_time_ms: int = 1000):
     random.seed(seed)
     
     # Initialize shogi engine with thinking time limit
-    engine = YaneuraOuEngine(think_time_ms=think_time_ms)
-    if not engine.start():
-        raise RuntimeError("Failed to start YaneuraOu engine")
+    try:
+        engine = YaneuraOuEngine(think_time_ms=think_time_ms)
+        if not engine.start():
+            raise RuntimeError("Failed to start YaneuraOu engine")
+    except Exception as e:
+        print(f"Error starting engine: {str(e)}")
+        raise RuntimeError(f"Failed to start YaneuraOu engine: {str(e)}")
     
     try:
         # Initialize data generator
@@ -55,4 +59,4 @@ def main(num_games: int = 100, seed: int = 42, think_time_ms: int = 1000):
 if __name__ == "__main__":
     # Create datasets directory if it doesn't exist
     Path("datasets").mkdir(exist_ok=True)
-    main(num_games=1, think_time_ms=1000)  # Default 1 second thinking time
+    main(num_games=1, seed=42, think_time_ms=1000)  # Default 1 second thinking time
