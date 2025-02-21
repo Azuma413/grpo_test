@@ -5,13 +5,21 @@ from pathlib import Path
 class ShogiDataset:
     """Dataset class for shogi training data."""
     
-    def __init__(self, system_prompt: Optional[str] = None):
+    def __init__(self):
         """Initialize dataset.
         
         Args:
             system_prompt: Optional system prompt to prepend to each example.
         """
-        self.system_prompt = system_prompt
+        self.system_prompt = """
+Respond in the following format:
+<reasoning>
+...
+</reasoning>
+<answer>
+...
+</answer>
+"""
         self.data: List[Dict] = []
         
     def load_jsonl(self, path: str) -> None:
@@ -64,29 +72,13 @@ class ShogiDataset:
         """
         examples = []
         for item in self.data:
-            if self.system_prompt:
-                # Format with system prompt
-                example = {
-                    "messages": [
-                        {"role": "system", "content": self.system_prompt},
-                        {"role": "user", "content": item["prompt"]}
-                    ]
-                }
-                if item["response"]:
-                    example["messages"].append(
-                        {"role": "assistant", "content": item["response"]}
-                    )
-            else:
-                # Format without system prompt
-                example = {
-                    "messages": [
-                        {"role": "user", "content": item["prompt"]}
-                    ]
-                }
-                if item["response"]:
-                    example["messages"].append(
-                        {"role": "assistant", "content": item["response"]}
-                    )
+            example = {
+                "prompt": [
+                    {"role": "system", "content": self.system_prompt},
+                    {"role": "user", "content": item["prompt"]}
+                ],
+                "answer": item["response"]
+            }
             examples.append(example)
         return examples
 
