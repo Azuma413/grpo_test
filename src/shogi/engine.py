@@ -7,63 +7,113 @@ from threading import Thread
 from queue import Queue, Empty
 from datetime import datetime
 
+import logging
+from logging.handlers import RotatingFileHandler
+
+# ロガーの設定
+logger = logging.getLogger('YaneuraOu')
+logger.setLevel(logging.DEBUG)
+handler = RotatingFileHandler('engine.log', maxBytes=10*1024*1024, backupCount=5)
+handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+logger.addHandler(handler)
+
 class MessageQueue:
     def __init__(self):
         self.queue = Queue()
         self._last_error = None
+        self._processed_messages = []  # 処理済みメッセージを保持
     
     def wait_for_type(self, msg_type: str, timeout: float) -> Optional[Dict]:
-        """タイムアウトをより厳密に管理"""
+        """タイムアウトをより厳密に管理し、エラー処理を強化"""
         start_time = time.time()
+        messages = []  # 処理中に受け取ったメッセージを保持
+        
         while time.time() - start_time < timeout:
             try:
-                msg = self.queue.get(timeout=min(0.05, timeout/10))
+                msg = self.queue.get(timeout=min(0.1, timeout/5))  # タイムアウト時間を調整
+                messages.append(msg)
+                
                 if msg['type'] == msg_type:
+                    self._processed_messages.extend(messages)  # 処理済みメッセージを保存
                     return msg
                 if msg['type'] == 'error':
                     self._last_error = msg['content']
+                    logger.error(f"Error received: {msg['content']}")
             except Empty:
                 continue
+            except Exception as e:
+                logger.error(f"Error in wait_for_type: {e}")
+                self._last_error = str(e)
+        
+        # タイムアウト時のログ
+        logger.warning(f"Timeout waiting for message type: {msg_type}")
         return None
 
     def put_message(self, message: Dict):
-        """メッセージをキューに追加"""
+        """メッセージをキューに追加し、ログに記録"""
         self.queue.put(message)
+        logger.debug(f"Message added to queue: {message}")
 
     def clear(self):
-        """キューをクリア"""
+        """キューをクリアし、処理済みメッセージを保持"""
+        cleared_messages = []
         while not self.queue.empty():
             try:
-                self.queue.get_nowait()
+                msg = self.queue.get_nowait()
+                cleared_messages.append(msg)
             except Empty:
                 break
+        
+        # 重要なメッセージは保持
+        important_types = {'error', 'bestmove', 'position'}
+        important_messages = [msg for msg in cleared_messages if msg['type'] in important_types]
+        self._processed_messages.extend(important_messages)
+        logger.debug(f"Queue cleared. Retained {len(important_messages)} important messages")
 
     def get_last_error(self) -> Optional[str]:
         """最後のエラーメッセージを取得"""
         return self._last_error
 
+    def get_processed_messages(self) -> List[Dict]:
+        """処理済みメッセージを取得"""
+        return self._processed_messages.copy()
+
 class OutputMonitor:
     def __init__(self, process: subprocess.Popen, message_queue: MessageQueue):
         self.process = process
         self.message_queue = message_queue
-        self.log_file = open('log.txt', 'w', encoding='utf-8')
         self.running = False
         self.thread = None
+        self._last_activity = time.time()
+        self._error_count = 0
+        self.MAX_ERRORS = 10
+        self.ERROR_RESET_TIME = 60  # 60秒後にエラーカウントをリセット
 
     def start(self):
         """モニタリングスレッドを開始"""
+        if self.thread and self.thread.is_alive():
+            logger.warning("Monitor thread already running")
+            return
+            
         self.running = True
         self.thread = Thread(target=self._monitor)
-        self.thread.daemon = True  # メインスレッド終了時に自動終了
+        self.thread.daemon = True
         self.thread.start()
+        logger.info("Output monitor started")
 
     def stop(self):
         """モニタリングスレッドを停止"""
+        if not self.running:
+            return
+            
         self.running = False
         if self.thread:
-            self.thread.join()
-        if self.log_file:
-            self.log_file.close()
+            try:
+                self.thread.join(timeout=5.0)  # 5秒でタイムアウト
+                if self.thread.is_alive():
+                    logger.warning("Monitor thread failed to stop gracefully")
+            except Exception as e:
+                logger.error(f"Error stopping monitor thread: {e}")
 
     def _monitor(self):
         """エンジンの出力を監視"""
@@ -71,54 +121,67 @@ class OutputMonitor:
             try:
                 line = self.process.stdout.readline()
                 if not line:
+                    # プロセスが終了していないか確認
+                    if self.process.poll() is not None:
+                        logger.error("Engine process terminated unexpectedly")
+                        break
                     continue
-                    
-                timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
+
+                self._last_activity = time.time()
                 line_str = line.strip()
-                self.log_file.write(f"[{timestamp}] {line_str}\n")
-                self.log_file.flush()
+                
+                # エラーカウントのリセットチェック
+                if time.time() - self._last_activity > self.ERROR_RESET_TIME:
+                    self._error_count = 0
                 
                 # メッセージをパースしてキューに格納
-                if line_str.startswith("info string Error!"):
-                    self.message_queue.put_message({
-                        'type': 'error',
-                        'content': line_str
-                    })
-                elif line_str.startswith("info"):
-                    self.message_queue.put_message({
-                        'type': 'info',
-                        'content': line_str
-                    })
-                elif line_str.startswith("bestmove"):
-                    self.message_queue.put_message({
-                        'type': 'bestmove',
-                        'content': line_str
-                    })
-                elif line_str.startswith("position"):
-                    self.message_queue.put_message({
-                        'type': 'position',
-                        'content': line_str
-                    })
-                elif line_str.startswith("moves"):
-                    self.message_queue.put_message({
-                        'type': 'info',
-                        'content': line_str
-                    })
-                elif line_str == "readyok":
-                    self.message_queue.put_message({
-                        'type': 'readyok',
-                        'content': line_str
-                    })
-                elif line_str == "usiok":
-                    self.message_queue.put_message({
-                        'type': 'usiok',
-                        'content': line_str
-                    })
+                try:
+                    self._parse_and_queue_message(line_str)
+                except Exception as e:
+                    logger.error(f"Error parsing message: {e}")
+                    self._handle_error(e)
+                    
             except Exception as e:
-                self.message_queue.put_message({
-                    'type': 'error',
-                    'content': str(e)
-                })
+                logger.error(f"Error in monitor loop: {e}")
+                self._handle_error(e)
+                
+        logger.info("Monitor thread stopped")
+
+    def _parse_and_queue_message(self, line_str: str):
+        """メッセージをパースしてキューに追加"""
+        message = None
+        
+        if line_str.startswith("info string Error!"):
+            message = {'type': 'error', 'content': line_str}
+            logger.error(f"Engine error: {line_str}")
+        elif line_str.startswith("info"):
+            message = {'type': 'info', 'content': line_str}
+        elif line_str.startswith("bestmove"):
+            message = {'type': 'bestmove', 'content': line_str}
+            logger.info(f"Best move found: {line_str}")
+        elif line_str.startswith("position"):
+            message = {'type': 'position', 'content': line_str}
+        elif line_str.startswith("moves"):
+            message = {'type': 'info', 'content': line_str}
+        elif line_str == "readyok":
+            message = {'type': 'readyok', 'content': line_str}
+        elif line_str == "usiok":
+            message = {'type': 'usiok', 'content': line_str}
+            
+        if message:
+            self.message_queue.put_message(message)
+
+    def _handle_error(self, error: Exception):
+        """エラー処理とリカバリーロジック"""
+        self._error_count += 1
+        if self._error_count >= self.MAX_ERRORS:
+            logger.critical(f"Too many errors ({self._error_count}), stopping monitor")
+            self.running = False
+        
+        self.message_queue.put_message({
+            'type': 'error',
+            'content': str(error)
+        })
 
 class YaneuraOuEngine:
     """Interface for the YaneuraOu shogi engine."""
@@ -132,36 +195,97 @@ class YaneuraOuEngine:
         self._moves: List[str] = []
         self.message_queue = MessageQueue()
         self.output_monitor = None
-        self.default_timeout = 0.5  # 500ミリ秒
+        self.default_timeout = 2.0  # タイムアウトを2秒に延長
+        self._last_sync_time = time.time()
+        self._sync_interval = 5.0  # 5秒ごとに同期チェック
+        self._command_retries = 3  # コマンドの再試行回数
         
+    def check_ready(self, timeout: float = 1.0) -> bool:
+        """Check if engine is ready and wait for confirmation.
+        
+        Args:
+            timeout: Maximum time to wait for readyok response.
+            
+        Returns:
+            bool: True if engine confirmed ready, False otherwise.
+        """
+        # 定期的な同期チェック
+        current_time = time.time()
+        if current_time - self._last_sync_time > self._sync_interval:
+            logger.info("Performing periodic sync check")
+            self._last_sync_time = current_time
+            
+            # エンジンの状態を確認
+            if not self.process or self.process.poll() is not None:
+                logger.error("Engine process not available during sync check")
+                return False
+        
+        # Clear any pending messages
+        self.message_queue.clear()
+        
+        # Send isready command with retries
+        for attempt in range(self._command_retries):
+            if attempt > 0:
+                logger.warning(f"Retrying isready command (attempt {attempt + 1})")
+                time.sleep(0.1 * attempt)  # 徐々に待ち時間を増やす
+                
+            if self._send_command("isready"):
+                # Wait for readyok response
+                if self.message_queue.wait_for_type('readyok', timeout=timeout):
+                    return True
+                    
+        logger.error("Failed to get readyok response after all retries")
+        return False
+
     def _update_position_sfen(self, move: str) -> bool:
-        """Update internal SFEN state after a move"""
+        """Update internal SFEN state after a move with improved error handling"""
+        logger.info(f"Updating position after move: {move}")
+        
         try:
             # Clear any pending messages
             self.message_queue.clear()
             
-            # Add move to list and update position
-            self._moves.append(move)
-            new_position = f"position startpos moves {' '.join(self._moves)}"
-            self.position = new_position
+            # Create new position with the move
+            new_moves = self._moves + [move]
+            new_position = f"position startpos moves {' '.join(new_moves)}"
             
-            # Send new position to engine and wait for sync
-            print(f"[Engine] Updating position after move {move}")
-            self._send_command(new_position)
-            self._send_command("isready")
-            if not self.message_queue.wait_for_type('readyok', timeout=1.0):
-                print("[Engine] Failed to sync after position update")
-                return False
-            
-            # Basic SFEN position adjustment (not complete, but tracks color changes)
-            if 'b' in self._position_sfen:
-                self._position_sfen = self._position_sfen.replace('b', 'w')
-            else:
-                self._position_sfen = self._position_sfen.replace('w', 'b')
+            # Send position and wait for sync with retries
+            for attempt in range(self._command_retries):
+                if attempt > 0:
+                    logger.warning(f"Retrying position update (attempt {attempt + 1})")
+                    time.sleep(0.1 * attempt)
                 
-            return True
+                if not self._send_command(new_position):
+                    continue
+                    
+                if not self.check_ready(timeout=self.default_timeout):
+                    logger.error("Failed to sync after position update")
+                    continue
+                
+                # Get updated SFEN from engine
+                if not self._send_command("position"):
+                    continue
+                    
+                msg = self.message_queue.wait_for_type('position', timeout=self.default_timeout)
+                if not msg:
+                    logger.error("Failed to get updated position")
+                    continue
+                    
+                # Update internal state
+                self._moves = new_moves
+                self.position = new_position
+                if 'sfen' in msg['content']:
+                    sfen_parts = msg['content'].split("sfen ", 1)
+                    if len(sfen_parts) > 1:
+                        self._position_sfen = sfen_parts[1].strip()
+                        logger.info(f"Successfully updated position to: {self._position_sfen}")
+                        return True
+                        
+            logger.error("Failed to update position after all retries")
+            return False
+            
         except Exception as e:
-            print(f"[Engine] Error updating position: {e}")
+            logger.error(f"Error updating position: {e}")
             return False
 
     def start(self) -> bool:
@@ -175,9 +299,9 @@ class YaneuraOuEngine:
                 bufsize=1
             )
             # Set non-blocking mode for stdout
-            fd = self.process.stdout.fileno()
-            fl = fcntl.fcntl(fd, fcntl.F_GETFL)
-            fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
+            # fd = self.process.stdout.fileno()
+            # fl = fcntl.fcntl(fd, fcntl.F_GETFL)
+            # fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
 
             # 出力モニターを開始
             self.output_monitor = OutputMonitor(self.process, self.message_queue)
@@ -208,8 +332,7 @@ class YaneuraOuEngine:
             self._send_command("setoption name MinimumThinkingTime value 100")
             
             # Wait for engine to process options
-            self._send_command("isready")
-            if not self.message_queue.wait_for_type('readyok', timeout=1.0):
+            if not self.check_ready():
                 print("Engine not responding to isready")
                 return False
             self._send_command("usinewgame")
@@ -224,49 +347,62 @@ class YaneuraOuEngine:
         if not self.message_queue.wait_for_type("usiok", timeout):
             return False
         
-        self._send_command("isready")
-        if not self.message_queue.wait_for_type("readyok", timeout):
-            return False
-        return True
+        return self.check_ready(timeout)
 
     def _send_command(self, command: str) -> bool:
-        if self.process and self.process.poll() is None:
-            try:
-                self.process.stdin.write(f"{command}\n")
-                self.process.stdin.flush()
-                return True
-            except Exception as e:
-                print(f"Error sending command: {e}")
-                return False
-        return False
+        """Send command to engine with error handling and logging"""
+        if not self.process:
+            logger.error("No engine process available")
+            return False
+            
+        if self.process.poll() is not None:
+            logger.error("Engine process has terminated")
+            return False
+            
+        try:
+            logger.debug(f"Sending command: {command}")
+            self.process.stdin.write(f"{command}\n")
+            self.process.stdin.flush()
+            return True
+        except Exception as e:
+            logger.error(f"Error sending command '{command}': {e}")
+            return False
 
-    def get_current_sfen(self, sfen: str, timeout: float = 0.5) -> str:
+    def get_current_sfen(self, sfen: str, timeout: float = 1.0) -> str:
         """Get current position in SFEN format and update engine state"""
+        logger.info(f"Getting current SFEN for position: {sfen}")
+        
         # Clear any pending messages
         self.message_queue.clear()
         
         # Update internal position state
         self.position = sfen if sfen.startswith("position ") else f"position {sfen}"
         
-        # Send position command and wait for synchronization
-        self._send_command(self.position)
-        self._send_command("isready")
-        if not self.message_queue.wait_for_type('readyok', timeout=0.2):
-            return self._position_sfen
-        
-        # Request SFEN directly
-        self._send_command("position")
-        msg = self.message_queue.wait_for_type('position', timeout=0.2)
-        
-        if msg and 'sfen' in msg['content']:
-            sfen_parts = msg['content'].split("sfen ", 1)
-            if len(sfen_parts) > 1:
-                self._position_sfen = sfen_parts[1].strip()
-        
+        # Send position command and wait for synchronization with retries
+        for attempt in range(self._command_retries):
+            if attempt > 0:
+                logger.warning(f"Retrying position update (attempt {attempt + 1})")
+                time.sleep(0.1 * attempt)
+                
+            if not self._send_command(self.position):
+                continue
+                
+            if self.check_ready(timeout=timeout):
+                # Request SFEN directly
+                if self._send_command("position"):
+                    msg = self.message_queue.wait_for_type('position', timeout=timeout)
+                    if msg and 'sfen' in msg['content']:
+                        logger.info(f"Found SFEN: {msg['content']}")
+                        sfen_parts = msg['content'].split("sfen ", 1)
+                        if len(sfen_parts) > 1:
+                            self._position_sfen = sfen_parts[1].strip()
+                            return self._position_sfen
+                            
+        logger.error("Failed to get current SFEN after all retries")
         return self._position_sfen
 
-    def get_best_move(self, timeout: float = 1.0) -> str:
-        """Get the best move for the current position.
+    def get_best_move(self, timeout: float = 2.0) -> str:
+        """Get the best move for the current position with improved error handling and retries.
         
         Args:
             timeout: Maximum time to wait for engine response.
@@ -274,73 +410,74 @@ class YaneuraOuEngine:
         Returns:
             str: Best move in USI format, or "none" if no legal moves exist.
         """
+        logger.info("Getting best move")
+        
         if not self.process or self.process.poll() is not None:
-            print("[Engine] Process not available")
+            logger.error("Engine process not available")
             return "none"
 
-        # Make sure we're in a valid state and clear any pending messages
-        self.message_queue.clear()
-        print("[Engine] Ensuring engine is ready...")
-        self._send_command("isready")
-        
-        # Give engine more time to get ready
-        if not self.message_queue.wait_for_type('readyok', timeout=1.0):
-            print("[Engine] Not ready before search")
-            # Try one more time
-            self._send_command("isready")
-            if not self.message_queue.wait_for_type('readyok', timeout=1.0):
-                print("[Engine] Engine failed to respond twice")
-                return "none"
-        
-        # Confirm current position is set
-        print(f"[Engine] Current position: {self.position}")
-        self._send_command(self.position)
-        self._send_command("isready")
-        if not self.message_queue.wait_for_type('readyok', timeout=0.5):
-            print("[Engine] Failed to confirm position")
-            return "none"
-
-        # Clear messages again before starting search
-        self.message_queue.clear()
-        print(f"[Engine] Starting search with movetime {self.think_time_ms}ms")
-        self._send_command(f"go movetime {self.think_time_ms}")
-        
-        # Wait for bestmove
-        bestmove_msg = self.message_queue.wait_for_type('bestmove', timeout=timeout)
-        if not bestmove_msg:
-            print("[Engine] No bestmove received within timeout")
-            return "none"
-        
-        # Parse the best move
-        try:
-            move = bestmove_msg['content'].split()[1]
-            print(f"[Engine] Found move: {move}")
-        except (IndexError, KeyError):
-            print("[Engine] Failed to parse bestmove response")
-            return "none"
-        
-        # Force resync after getting move
-        for _ in range(3):  # Try up to 3 times
-            print("[Engine] Resyncing after move...")
+        # エンジンの状態確認と同期
+        for attempt in range(self._command_retries):
+            if attempt > 0:
+                logger.warning(f"Retrying engine sync (attempt {attempt + 1})")
+                time.sleep(0.2 * attempt)
+            
+            if not self.check_ready(timeout=timeout):
+                continue
+                
+            # 現在の局面を確認
+            logger.info(f"Current position: {self.position}")
+            if not self._send_command(self.position):
+                continue
+                
+            if not self.check_ready(timeout=timeout):
+                continue
+                
+            # 探索開始
             self.message_queue.clear()
-            self._send_command("isready")
-            if self.message_queue.wait_for_type('readyok', timeout=1.0):
-                # One final position check
-                self._send_command(self.position)
-                self._send_command("isready")
-                if self.message_queue.wait_for_type('readyok', timeout=1.0):
-                    print(f"[Engine] Successfully resynced after move: {move}")
-                    return move
-            time.sleep(0.1)  # Small delay between attempts
+            logger.info(f"Starting search with movetime {self.think_time_ms}ms")
+            if not self._send_command(f"go movetime {self.think_time_ms}"):
+                continue
+            
+            # bestmoveを待つ
+            bestmove_msg = self.message_queue.wait_for_type('bestmove', timeout=max(timeout, self.think_time_ms/1000 + 0.5))
+            if not bestmove_msg:
+                logger.warning("No bestmove received within timeout")
+                continue
+            
+            # 指し手をパース
+            try:
+                move = bestmove_msg['content'].split()[1]
+                logger.info(f"Found move: {move}")
+                
+                # 最終同期チェック
+                if self.check_ready(timeout=timeout):
+                    if self._send_command(self.position) and self.check_ready(timeout=timeout):
+                        logger.info(f"Successfully validated move: {move}")
+                        return move
+            except (IndexError, KeyError) as e:
+                logger.error(f"Failed to parse bestmove response: {e}")
+                continue
         
-        print("[Engine] Failed to resync after move")
+        logger.error("Failed to get valid move after all retries")
         return "none"
 
-    def get_position_evaluation(self, timeout: float = 0.5) -> float:
-        self._send_command(f"go movetime {self.think_time_ms}")
+    def get_position_evaluation(self, timeout: float = 1.0) -> float:
+        """局面の評価値を取得（改善版）"""
+        logger.info("Getting position evaluation")
+        
+        if not self.check_ready(timeout=timeout):
+            logger.error("Engine not ready for evaluation")
+            return 0.0
+            
+        if not self._send_command(f"go movetime {self.think_time_ms}"):
+            logger.error("Failed to send evaluation command")
+            return 0.0
         
         evaluation = 0.0
+        best_evaluation = None
         start_time = time.time()
+        
         while time.time() - start_time < timeout:
             msg = self.message_queue.wait_for_type('info', timeout=0.1)
             if not msg:
@@ -348,25 +485,59 @@ class YaneuraOuEngine:
                 
             line = msg['content']
             if "score cp" in line or "score mate" in line:
-                parts = line.split()
                 try:
+                    parts = line.split()
                     score_idx = parts.index("score")
                     if parts[score_idx + 1] == "cp":
-                        evaluation = float(parts[score_idx + 2])
+                        current_eval = float(parts[score_idx + 2])
+                        # より深い探索の評価値を優先
+                        if "depth" in line and (best_evaluation is None or "depth" not in line):
+                            best_evaluation = current_eval
+                            evaluation = current_eval
                     elif parts[score_idx + 1] == "mate":
                         mate_in = int(parts[score_idx + 2])
                         evaluation = float('inf') if mate_in > 0 else float('-inf')
-                except (ValueError, IndexError):
+                        best_evaluation = evaluation  # メイト発見時は即座に確定
+                except (ValueError, IndexError) as e:
+                    logger.warning(f"Error parsing evaluation: {e}")
                     continue
             
             if self.message_queue.wait_for_type('bestmove', timeout=0.1):
                 break
         
+        logger.info(f"Final evaluation: {evaluation}")
         return evaluation
 
     def close(self):
-        if self.output_monitor:
-            self.output_monitor.stop()
-        if self.process:
-            self._send_command("quit")
-            self.process.wait()
+        """エンジンを安全に終了"""
+        logger.info("Closing engine")
+        try:
+            if self.output_monitor:
+                self.output_monitor.stop()
+                logger.info("Output monitor stopped")
+                
+            if self.process:
+                # 終了コマンドを送信
+                if self._send_command("quit"):
+                    # 正常終了を待機
+                    try:
+                        exit_code = self.process.wait(timeout=5.0)
+                        logger.info(f"Engine process terminated with exit code: {exit_code}")
+                    except subprocess.TimeoutExpired:
+                        logger.warning("Engine process did not terminate gracefully, forcing termination")
+                        self.process.terminate()
+                        try:
+                            self.process.wait(timeout=2.0)
+                        except subprocess.TimeoutExpired:
+                            logger.error("Failed to terminate engine process, killing")
+                            self.process.kill()
+                            self.process.wait()
+        except Exception as e:
+            logger.error(f"Error during engine shutdown: {e}")
+            # 最後の手段としてプロセスを強制終了
+            if self.process:
+                try:
+                    self.process.kill()
+                    self.process.wait()
+                except Exception as e2:
+                    logger.critical(f"Failed to kill engine process: {e2}")

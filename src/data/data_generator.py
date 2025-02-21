@@ -71,51 +71,17 @@ class ShogiDataGenerator:
         })
         
         while True:
-            # Update engine position and ensure sync
-            current_position = f"position startpos moves {' '.join(moves)}"
-            
-            # Clear any pending messages and set position
-            self.engine.message_queue.clear()
-            print(f"\nSetting position: {current_position}")
-            self.engine._send_command(current_position)
-            
-            # Wait for engine to be ready
-            self.engine._send_command("isready")
-            if not self.engine.message_queue.wait_for_type('readyok', timeout=1.0):
-                print("Failed to sync engine before move")
-                # Try one more time with longer timeout
-                self.engine.message_queue.clear()
-                self.engine._send_command("isready")
-                if not self.engine.message_queue.wait_for_type('readyok', timeout=2.0):
-                    print("Engine sync failed twice, stopping game")
-                    break
-            
-            # Get best move for current position with increased timeout
-            next_move = self.engine.get_best_move(timeout=2.0)
-            
-            # Check for game end
-            if next_move == "none":
+            next_move = self.engine.get_best_move(timeout=2.0) # 最善手を取得
+            if next_move == "none": # 最善手がない場合は詰み
                 print("Game over")
                 break
-            
-            move_number += 1
             moves.append(next_move)
-            print(f"Move {move_number}: {next_move}")
-            
-            # Update SFEN after the move by notifying engine
-            if not self.engine._update_position_sfen(next_move):
-                print("Failed to update engine position")
+            next_position = f"position startpos moves {' '.join(moves)}"
+            current_sfen = self.engine.get_current_sfen(next_position)
+            if not current_sfen: # SFENの取得に失敗
+                print("Failed to get updated SFEN")
                 break
-            current_sfen = self.engine._position_sfen
-            
-            # Verify engine is still responsive
-            self.engine.message_queue.clear()
-            self.engine._send_command("isready")
-            if not self.engine.message_queue.wait_for_type('readyok', timeout=1.0):
-                print("Engine became unresponsive after position update")
-                break
-            
-            # Extract hands information
+            # 持ち駒の取得
             hands = "なし"  # Default value
             if " w " in current_sfen:
                 hands = current_sfen.split(" w ")[1].split(" ")[0]
@@ -123,35 +89,18 @@ class ShogiDataGenerator:
                 hands = current_sfen.split(" b ")[1].split(" ")[0]
             if hands == "-":
                 hands = "なし"
-            
-            # Store position after the move
             positions.append({
                 "sfen": current_sfen,
                 "hands": hands,
                 "move_number": move_number,
                 "previous_move": next_move
             })
-            
             print(f"Move {move_number}: {next_move}")
-            
-            # Make sure the engine is in sync with our position
-            if not self.engine._send_command("isready"):
-                print("Engine sync error")
-                break
-            if not self.engine.message_queue.wait_for_type('readyok', timeout=0.2):
-                print("Engine sync error")
-                break
-            
-            # Check for game end conditions
-            # if self._is_game_over(current_position):
-            #     break
-                
-            # Safety check to prevent infinite games
-            if move_number >= 10:  # Typical shogi games rarely exceed 200 moves
-            # if move_number >= 200:  # Typical shogi games rarely exceed 200 moves
+            move_number += 1
+            if move_number >= 10: # 10手までで終了
                 break
         
-        return positions # これが良くない
+        return positions
 
     def _is_game_over(self, position: str) -> bool:
         """Check if the game should end.
