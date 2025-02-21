@@ -1,211 +1,104 @@
-from typing import Optional
-import torch
-import os
-
-from models.model_factory import ModelFactory, ModelConfig
-from trainer.online_trainer import OnlineGRPOTrainer
-from game.engine_interface import YaneuraOuEngineWrapper
-from utils.logging import setup_logging, log_training_config
-from utils.reward_functions import (
-    xmlcount_reward_func,
-    soft_format_reward_func,
-    strict_format_reward_func,
-    evaluation_reward_func,
-    soft_shogi_format_reward_func,
-    strict_shogi_format_reward_func,
-    DEFAULT_REWARD_WEIGHTS
-)
-from config import get_model_config, get_training_config
-from data_utils import SYSTEM_PROMPT
-from shogi_engine import YaneuraOuEngine
-
-def create_trainer(
-    model_config: ModelConfig,
-    system_prompt: str,
-    engine: YaneuraOuEngineWrapper,
-    learning_rate: float = 5e-6,
-    device: Optional[str] = None,
-) -> OnlineGRPOTrainer:
-    """Create and configure the trainer.
-    
-    Args:
-        model_config: Model configuration.
-        system_prompt: System prompt for the model.
-        engine: Shogi engine interface.
-        learning_rate: Learning rate for optimization.
-        device: Device to use for training.
-        
-    Returns:
-        OnlineGRPOTrainer: Configured trainer instance.
-    """
-    # Create model and tokenizer
-    model, tokenizer = ModelFactory.create_model(model_config)
-    
-    # Configure reward functions with weights
-    reward_funcs = [
-        xmlcount_reward_func,              # XML structure check
-        soft_format_reward_func,           # Basic format check
-        strict_format_reward_func,         # Strict format check
-        evaluation_reward_func,            # Engine evaluation reward
-        soft_shogi_format_reward_func,     # Basic shogi format check
-        strict_shogi_format_reward_func,   # Strict shogi format check
-    ]
-    
-    # Create trainer
-    trainer = OnlineGRPOTrainer(
-        model=model,
-        tokenizer=tokenizer,
-        engine=engine,
-        reward_funcs=reward_funcs,
-        system_prompt=system_prompt,
-        learning_rate=learning_rate,
-        device=device,
-        beta=0.1,  # KL divergence weight
-        num_generations=4,  # Number of candidates per move
-        max_completion_length=64,
-    )
-    
-    return trainer
-
-def train(
-    trainer: OnlineGRPOTrainer,
-    num_games: int,
-    logger,
-    save_path: Optional[str] = "grpo_saved_lora"
-):
-    """Train the model through self-play.
-    
-    Args:
-        trainer: The trainer instance.
-        num_games: Number of games to play.
-        logger: Logger instance for metrics.
-        save_path: Path to save model weights (optional).
-    """
-    for game_idx in range(num_games):
-        try:
-            game_reward, moves = trainer.train_game()
-            logger.log({
-                "game": game_idx,
-                "game_reward": game_reward,
-                "num_moves": len(moves)
-            })
-        except Exception as e:
-            print(f"Error in game {game_idx}: {e}")
-            continue
-    
-    if save_path:
-        ModelFactory.save_model(trainer.model, trainer.tokenizer, save_path)
-
-def test_model(
-    model_config: ModelConfig,
-    question: str,
-    use_lora: bool = False,
-    lora_path: Optional[str] = "grpo_saved_lora"
-):
-    """Test the model on a given question.
-    
-    Args:
-        model_config: Model configuration.
-        question: Input question/position.
-        use_lora: Whether to use trained LoRA weights.
-        lora_path: Path to LoRA weights if use_lora is True.
-    """
-    # Create base model and tokenizer
-    model, tokenizer = ModelFactory.create_model(model_config)
-    
-    # Apply LoRA weights if requested
-    if use_lora:
-        text = tokenizer.apply_chat_template([
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": question},
-        ], tokenize=False, add_generation_prompt=True)
-        lora_request = model.load_lora(lora_path)
-    else:
-        text = tokenizer.apply_chat_template([
-            {"role": "user", "content": question},
-        ], tokenize=False, add_generation_prompt=True)
-        lora_request = None
-
-    # Generate response
-    sampling_params = ModelFactory.get_sampling_params()
-    output = model.fast_generate(
-        [text] if not use_lora else text,
-        sampling_params=sampling_params,
-        lora_request=lora_request,
-    )[0].outputs[0].text
-
-    print(f"{'With LoRA:' if use_lora else 'Without LoRA:'}")
-    print(output)
-    print("-" * 50)
+"""
+Main script for GRPO-based shogi model training.
+"""
+import wandb
+from src.data import ShogiDataset
+from src.rewards import RewardFunctions
+from src.shogi import YaneuraOuEngine
+from unsloth import is_bfloat16_supported
+from unsloth import FastLanguageModel, PatchFastRL
+PatchFastRL("GRPO", FastLanguageModel) # trlのインポート前に実行する必要がある
+from trl import GRPOConfig, GRPOTrainer
 
 def main():
-    # Debug: Print environment variables
-    print("Debug: CUDA Environment Variables")
-    for key, value in os.environ.items():
-        if "CUDA" in key or "VLLM" in key:
-            print(f"{key}: {value}")
-    
-    # Get configurations
-    model_config = get_model_config()
-    print("\nDebug: Model Config")
-    print(f"GPU Memory Utilization: {model_config['gpu_memory_utilization']}")
-    training_config = get_training_config(lora_rank=model_config["lora_rank"])
-    
-    # Log configurations separately
-    config = log_training_config({
-        "model_config": model_config,
-        "training_config": training_config.__dict__,
-    })
-    
-    # Initialize logger
-    logger = setup_logging(
-        project_name="grpo-online-training",
-        config=config,
-    )
-    
-    # Initialize engine
-    engine = YaneuraOuEngine()
-    if not engine.start():
-        raise RuntimeError("Failed to start YaneuraOu engine")
-    engine_wrapper = YaneuraOuEngineWrapper(engine.process)
-    
+    """Main training routine."""
+    # wandbの設定
+    wandb.init(project="shogi-grpo", reinit=True)
     try:
-        # Create and train model
-        trainer = create_trainer(
-            model_config=ModelConfig(**model_config),
-            system_prompt=SYSTEM_PROMPT,
-            engine=engine_wrapper,
-            learning_rate=training_config.learning_rate,
-        )
+        # Initialize shogi engine
+        engine = YaneuraOuEngine()
+        if not engine.start():
+            raise RuntimeError("Failed to start YaneuraOu engine")
         
-        train(
-            trainer=trainer,
-            num_games=training_config.max_steps,
-            logger=logger,
-        )
-        
-        # Test example
-        test_question = """
-| 9 | 8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 |
-|---|---|---|---|---|---|---|---|---|
-| 香 | 桂 | 銀 | 金 | 玉 | 金 | 銀 | 桂 | 香 |
-| 　 | 飛 | 　 | 　 | 　 | 　 | 　 | 角 | 　 |
-| 歩 | 歩 | 歩 | 歩 | 歩 | 歩 | 歩 | 歩 | 歩 |
-| 　 | 　 | 　 | 　 | 　 | 　 | 　 | 　 | 　 |
-| 　 | 　 | 　 | 　 | 　 | 　 | 　 | 　 | 　 |
-| 　 | 　 | 　 | 　 | 　 | 　 | 　 | 　 | 　 |
-| 歩 | 歩 | 歩 | 歩 | 歩 | 歩 | 歩 | 歩 | 歩 |
-| 　 | 角 | 　 | 　 | 　 | 　 | 　 | 飛 | 　 |
-| 香 | 桂 | 銀 | 金 | 玉 | 金 | 銀 | 桂 | 香 |
+        max_seq_length = 1024 # Can increase for longer reasoning traces
+        lora_rank = 64 # Larger rank = smarter, but slower
 
-持ち駒：なし
-"""
-        test_model(ModelConfig(**model_config), test_question, use_lora=False)
-        test_model(ModelConfig(**model_config), test_question, use_lora=True)
+        model, tokenizer = FastLanguageModel.from_pretrained(
+            model_name = "Qwen/Qwen2.5-3B-Instruct",
+            max_seq_length = max_seq_length,
+            load_in_4bit = True, # False for LoRA 16bit
+            fast_inference = True, # Enable vLLM fast inference
+            max_lora_rank = lora_rank,
+            gpu_memory_utilization = 0.6, # Reduce if out of memory
+        )
+
+        model = FastLanguageModel.get_peft_model(
+            model,
+            r = lora_rank, # Choose any number > 0 ! Suggested 8, 16, 32, 64, 128
+            target_modules = [
+                "q_proj", "k_proj", "v_proj", "o_proj",
+                "gate_proj", "up_proj", "down_proj",
+            ],
+            lora_alpha = lora_rank,
+            use_gradient_checkpointing = "unsloth", # Enable long context finetuning
+            random_state = 3407,
+        )   
+
+        training_args = GRPOConfig(
+            use_vllm = True, # use vLLM for fast inference!
+            learning_rate = 5e-6,
+            adam_beta1 = 0.9,
+            adam_beta2 = 0.99,
+            weight_decay = 0.1,
+            warmup_ratio = 0.1,
+            lr_scheduler_type = "cosine",
+            optim = "paged_adamw_8bit",
+            logging_steps = 1,
+            bf16 = is_bfloat16_supported(),
+            fp16 = not is_bfloat16_supported(),
+            per_device_train_batch_size = 1,
+            gradient_accumulation_steps = 1, # Increase to 4 for smoother training
+            num_generations = 6, # Decrease if out of memory
+            max_prompt_length = 256,
+            max_completion_length = 500,
+            num_train_epochs = 3, # Set to 1 for a full training run
+            # max_steps = 100,
+            save_steps = 100,
+            max_grad_norm = 0.1,
+            report_to = "wandb", # Can use Weights & Biases
+            output_dir = "outputs",
+        )
+        # Load dataset
+        dataset = ShogiDataset()
+        dataset.load_jsonl("datasets/training_data.jsonl")
+        reward_functions = RewardFunctions()
+        # Initialize reward functions with lambda to bind self
+        reward_funcs = [
+            lambda prompts=None, completions=None, **kwargs: reward_functions.xml_reward(prompts=prompts, completions=completions, **kwargs),
+            lambda prompts=None, completions=None, **kwargs: reward_functions.strict_format_reward(prompts=prompts, completions=completions, **kwargs),
+            lambda prompts=None, completions=None, **kwargs: reward_functions.soft_format_reward(prompts=prompts, completions=completions, **kwargs),
+            lambda prompts=None, completions=None, **kwargs: reward_functions.soft_shogi_format_reward(prompts=prompts, completions=completions, **kwargs),
+            lambda prompts=None, completions=None, answer=None, **kwargs: reward_functions.strict_shogi_reward(prompts=prompts, completions=completions, answer=answer, **kwargs),
+            lambda prompts=None, completions=None, answer=None, **kwargs: reward_functions.evaluation_reward(prompts=prompts, completions=completions, answer=answer, **kwargs)
+        ]
         
+        trainer = GRPOTrainer(
+            model = model,
+            processing_class = tokenizer,
+            reward_funcs = reward_funcs,
+            args = training_args,
+            train_dataset = dataset.get_training_examples(),
+        )
+        
+        # Run training
+        trainer.train()
+        
+        # Save final model
+        model.save_lora("grpo_saved_lora")
     finally:
-        logger.finish()
-        engine_wrapper.close()
+        # Cleanup
+        engine.close()
+        wandb.finish()
 
 if __name__ == "__main__":
     main()
