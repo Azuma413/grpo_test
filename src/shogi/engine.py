@@ -155,7 +155,17 @@ class OutputMonitor:
             message = {'type': 'error', 'content': line_str}
             logger.error(f"Engine error: {line_str}")
         elif line_str.startswith("info"):
-            message = {'type': 'info', 'content': line_str}
+            # Check if this is a score info message
+            if "score cp" in line_str:
+                # Extract score value
+                try:
+                    score_str = line_str.split("score cp")[1].strip().split()[0]
+                    score = int(score_str)
+                    message = {'type': 'score', 'content': score}
+                except (IndexError, ValueError):
+                    message = {'type': 'info', 'content': line_str}
+            else:
+                message = {'type': 'info', 'content': line_str}
         elif line_str.startswith("bestmove"):
             message = {'type': 'bestmove', 'content': line_str}
             logger.info(f"Best move found: {line_str}")
@@ -242,57 +252,6 @@ class YaneuraOuEngine:
         logger.error("Failed to get readyok response after all retries")
         return False
 
-    def _update_position_sfen(self, move: str) -> bool:
-        """Update internal SFEN state after a move with improved error handling"""
-        logger.info(f"Updating position after move: {move}")
-        
-        try:
-            # Clear any pending messages
-            self.message_queue.clear()
-            
-            # Create new position with the move
-            new_moves = self._moves + [move]
-            new_position = f"position startpos moves {' '.join(new_moves)}"
-            
-            # Send position and wait for sync with retries
-            for attempt in range(self._command_retries):
-                if attempt > 0:
-                    logger.warning(f"Retrying position update (attempt {attempt + 1})")
-                    time.sleep(0.1 * attempt)
-                
-                if not self._send_command(new_position):
-                    continue
-                    
-                if not self.check_ready(timeout=self.default_timeout):
-                    logger.error("Failed to sync after position update")
-                    continue
-                
-                # Get updated SFEN from engine
-                if not self._send_command("position"):
-                    continue
-                    
-                msg = self.message_queue.wait_for_type('position', timeout=self.default_timeout)
-                if not msg:
-                    logger.error("Failed to get updated position")
-                    continue
-                    
-                # Update internal state
-                self._moves = new_moves
-                self.position = new_position
-                if 'sfen' in msg['content']:
-                    sfen_parts = msg['content'].split("sfen ", 1)
-                    if len(sfen_parts) > 1:
-                        self._position_sfen = sfen_parts[1].strip()
-                        logger.info(f"Successfully updated position to: {self._position_sfen}")
-                        return True
-                        
-            logger.error("Failed to update position after all retries")
-            return False
-            
-        except Exception as e:
-            logger.error(f"Error updating position: {e}")
-            return False
-
     def start(self) -> bool:
         try:
             self.process = subprocess.Popen(
@@ -368,15 +327,15 @@ class YaneuraOuEngine:
             logger.error(f"Error sending command '{command}': {e}")
             return False
 
-    def get_current_sfen(self, sfen: str, timeout: float = 1.0) -> str:
+    def get_current_sfen(self, pos: str, timeout: float = 1.0) -> str:
         """Get current position in SFEN format and update engine state"""
-        logger.info(f"Getting current SFEN for position: {sfen}")
+        logger.info(f"Getting current SFEN for position: {pos}")
         
         # Clear any pending messages
         self.message_queue.clear()
         
         # Update internal position state
-        self.position = sfen if sfen.startswith("position ") else f"position {sfen}"
+        self.position = pos if pos.startswith("position ") else f"position {pos}"
         
         # Send position command and wait for synchronization with retries
         for attempt in range(self._command_retries):
@@ -456,52 +415,86 @@ class YaneuraOuEngine:
             logger.error(f"Failed to parse bestmove response: {e}")
             return "none"
 
-    def get_position_evaluation(self, timeout: float = 1.0) -> float:
-        """局面の評価値を取得（改善版）"""
-        logger.info("Getting position evaluation")
-        
+    def get_move_score(self, move, sfen, timeout: float = 1.0) -> float:
+        """Get the evaluation score for a given move in the current position."""
         if not self.check_ready(timeout=timeout):
             logger.error("Engine not ready for evaluation")
             return 0.0
-            
-        if not self._send_command(f"go movetime {self.think_time_ms}"):
-            logger.error("Failed to send evaluation command")
-            return 0.0
-        
-        evaluation = 0.0
-        best_evaluation = None
-        start_time = time.time()
-        
-        while time.time() - start_time < timeout:
-            msg = self.message_queue.wait_for_type('info', timeout=0.1)
-            if not msg:
-                continue
-                
-            line = msg['content']
-            if "score cp" in line or "score mate" in line:
-                try:
-                    parts = line.split()
-                    score_idx = parts.index("score")
-                    if parts[score_idx + 1] == "cp":
-                        current_eval = float(parts[score_idx + 2])
-                        # より深い探索の評価値を優先
-                        if "depth" in line and (best_evaluation is None or "depth" not in line):
-                            best_evaluation = current_eval
-                            evaluation = current_eval
-                    elif parts[score_idx + 1] == "mate":
-                        mate_in = int(parts[score_idx + 2])
-                        evaluation = float('inf') if mate_in > 0 else float('-inf')
-                        best_evaluation = evaluation  # メイト発見時は即座に確定
-                except (ValueError, IndexError) as e:
-                    logger.warning(f"Error parsing evaluation: {e}")
-                    continue
-            
-            if self.message_queue.wait_for_type('bestmove', timeout=0.1):
-                break
-        
-        logger.info(f"Final evaluation: {evaluation}")
-        return evaluation
+        # 初期スコア
+        score = self._get_sfen_score(sfen, timeout=timeout)
+        # 盤面を設定
+        sfen = self.get_current_sfen(f"position {sfen} moves {move}")
+        # 差分を1手の評価値とする
+        score += self._get_sfen_score(sfen, timeout=timeout)
+        return score
 
+    def _get_sfen_score(self, sfen: str, timeout: float = 1.0) -> float:
+        """
+        sfenの局面における最善手の評価値を取得
+        """
+        if not self.check_ready(timeout=timeout):
+            logger.error("Engine not ready for evaluation")
+            return 0.0
+
+        # Set position
+        position_cmd = f"position sfen {sfen}"
+        if not self._send_command(position_cmd):
+            logger.error("Failed to set position")
+            return 0.0
+
+        # Clear message queue and start search
+        self.message_queue.clear()
+        if not self._send_command(f"go movetime {self.think_time_ms}"):
+            return 0.0
+
+        # Wait for score message
+        score_msg = self.message_queue.wait_for_type('score', timeout=max(timeout, self.think_time_ms/1000 + 0.5))
+        if not score_msg:
+            logger.warning("No score received within timeout")
+            return 0.0
+
+        return float(score_msg['content'])
+
+    def is_legal_move(self, sfen: str, move: str) -> bool:
+        """Check if a move is legal in the given position.
+        
+        Args:
+            sfen: Current position in SFEN format
+            move: Move to check in USI format
+            is_sente: True if it's first player's turn
+            
+        Returns:
+            bool: True if the move is legal
+        """
+        logger.info(f"Checking if move {move} is legal in position {sfen}")
+        
+        try:
+            # Set the position
+            position_cmd = f"position sfen {sfen}"
+            if not self._send_command(position_cmd):
+                logger.error("Failed to set position")
+                return False
+                
+            if not self.check_ready():
+                logger.error("Engine not ready after setting position")
+                return False
+                
+            # Try to make the move
+            test_move_cmd = f"position {sfen} moves {move}"
+            if not self._send_command(test_move_cmd):
+                logger.error("Failed to test move")
+                return False
+            # エラーを監視
+            error_msg = self.message_queue.wait_for_type('error', timeout=0.2)
+            if error_msg:
+                logger.error(f"Error message received: {error_msg['content']}")
+                return False
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error checking move legality: {e}")
+            return False
+            
     def close(self):
         """エンジンを安全に終了"""
         logger.info("Closing engine")

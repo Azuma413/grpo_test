@@ -54,16 +54,13 @@ class RewardFunctions():
         responses = [self._extract_xml_answer(completion[0]["content"]) for completion in completions]
         return [0.5 if re.match(pattern, r) else 0.0 for r in responses]
 
-    def strict_shogi_reward(self, prompts, completions: List[Dict], answers: List[str]) -> List[float]:
+    def strict_shogi_reward(self, completions: List[Dict], answers: List[str]) -> List[float]:
         """
         将棋の指し手が正しいかどうかを厳しく評価する
         """
         # 指し手のリストを取得
         responses = [self._extract_xml_answer(completion[0]["content"]) for completion in completions]
         rewards = []
-        is_sente = True
-        if "後手" in prompts[0][-1]["content"]:
-            is_sente = False
         
         for response, sfen in zip(responses, answers):
             # Check basic format first
@@ -74,7 +71,7 @@ class RewardFunctions():
                 # responseをUSI形式に変換
                 move = move_to_usi(response)
                 # Validate move with engine
-                if self.engine.is_legal_move(sfen, move, is_sente):
+                if self.engine.is_legal_move(sfen, move):
                     reward = 1.0
             else:
                 reward = 0.0
@@ -82,7 +79,7 @@ class RewardFunctions():
         
         return rewards
 
-    def evaluation_reward(self, prompts: List[str], completions: List[Dict], answer: str) -> List[float]:
+    def evaluation_reward(self, completions: List[Dict], answers: List[str]) -> List[float]:
         """Calculate reward based on engine evaluation of positions after moves.
         
         Args:
@@ -95,30 +92,16 @@ class RewardFunctions():
         """
         rewards = []
         
-        for completion in completions:
+        for completion, sfen in zip(completions, answers):
             try:
                 # Extract move from completion
-                move = self._extract_move(completion[0]["content"])
-                
-                # Set current position in engine
-                self.engine.get_current_sfen(answer)
-                
-                # Make the move and get evaluation
-                if move:
-                    # Update position with the move
-                    if self.engine._update_position_sfen(move):
-                        # Get evaluation for the resulting position
-                        evaluation = self.engine.get_position_evaluation()
-                        
-                        # Normalize to [-1, 1] range using tanh
-                        normalized_reward = math.tanh(evaluation / self.normalization_factor)
-                        rewards.append(normalized_reward)
-                    else:
-                        # Failed to update position
-                        rewards.append(-1.0)
-                else:
-                    # Invalid move format
-                    rewards.append(-1.0)
+                response = self._extract_move(completion[0]["content"])
+                move = move_to_usi(response)
+                # sfenの局面でmoveの評価値を取得
+                score = self.engine.get_move_score(move, sfen)
+                # Normalize score
+                reward = (score + self.normalization_factor) / (2 * self.normalization_factor)
+                rewards.append(reward)
             except Exception:
                 # Invalid moves get minimum reward
                 rewards.append(-1.0)

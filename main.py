@@ -10,14 +10,7 @@ from src.config import (
 )
 from src.data import ShogiDataset
 from src.models import ModelFactory
-from src.rewards import (
-    XMLCountReward,
-    StrictFormatReward,
-    SoftFormatReward,
-    EvaluationReward,
-    SoftShogiFormatReward,
-    StrictShogiFormatReward,
-)
+from src.rewards import RewardFunctions
 from src.shogi import YaneuraOuEngine
 from src.trainer import GRPOTrainer
 
@@ -48,14 +41,16 @@ def main():
         dataset = ShogiDataset()
         dataset.load_jsonl("datasets/training_data.jsonl")
         
+        reward_functions = RewardFunctions()
+        
         # Initialize reward functions
         reward_funcs = [
-            XMLCountReward(),              # XML structure check
-            SoftFormatReward(),           # Basic format check
-            StrictFormatReward(),         # Strict format check
-            EvaluationReward(),           # Engine-based evaluation
-            SoftShogiFormatReward(),      # Basic shogi move format
-            StrictShogiFormatReward(),    # Strict shogi move format
+            reward_functions.xml_reward,
+            reward_functions.strict_format_reward,
+            reward_functions.soft_format_reward,
+            reward_functions.soft_shogi_format_reward,
+            reward_functions.strict_shogi_reward,
+            reward_functions.evaluation_reward
         ]
         
         # Initialize trainer
