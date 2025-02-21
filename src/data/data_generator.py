@@ -82,23 +82,11 @@ class ShogiDataGenerator:
                 "previous_move": next_move,
                 "player": "sente" if sente_flag else "gote"
             })
-            # print(f"Move {move_number}: {next_move}")
+            print(f"Move {move_number}: {next_move}         ", end="\r")
             move_number += 1
             sente_flag = not sente_flag
         
         return positions
-
-    def _is_game_over(self, position: str) -> bool:
-        """Check if the game should end.
-        
-        Args:
-            position: Current position in SFEN format.
-            
-        Returns:
-            bool: True if game should end, False to continue.
-        """
-        self.engine.get_current_sfen(position)  # This updates engine's position state
-        return self.engine.get_best_move() == "none"
 
     def save_positions_csv(self, positions: List[List[Dict]], filepath: str = "datasets/positions.csv"):
         """Save generated positions to CSV file.
