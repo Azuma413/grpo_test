@@ -167,6 +167,11 @@ class OutputMonitor:
             message = {'type': 'readyok', 'content': line_str}
         elif line_str == "usiok":
             message = {'type': 'usiok', 'content': line_str}
+        elif line_str.startswith("sfen"):
+            message = {'type': 'info', 'content': line_str}
+        # Handle board output from 'd' command
+        elif "sfen" in line_str and not line_str.startswith("info"):
+            message = {'type': 'info', 'content': line_str}
             
         if message:
             self.message_queue.put_message(message)
@@ -387,16 +392,27 @@ class YaneuraOuEngine:
             if not self._send_command(self.position):
                 continue
                 
-            if self.check_ready(timeout=timeout):
-                # Request SFEN directly
-                if self._send_command("position"):
-                    msg = self.message_queue.wait_for_type('position', timeout=timeout)
-                    if msg and 'sfen' in msg['content']:
-                        logger.info(f"Found SFEN: {msg['content']}")
-                        sfen_parts = msg['content'].split("sfen ", 1)
+            # Request SFEN using 'd' command
+            if self._send_command("d"):
+                # Wait for all lines of output from 'd' command
+                sfen_found = False
+                start_time = time.time()
+                while time.time() - start_time < timeout:
+                    msg = self.message_queue.wait_for_type('info', timeout=0.1)
+                    if not msg:
+                        continue
+                        
+                    content = msg['content']
+                    if 'sfen' in content:
+                        sfen_parts = content.split("sfen ", 1)
                         if len(sfen_parts) > 1:
                             self._position_sfen = sfen_parts[1].strip()
-                            return self._position_sfen
+                            logger.info(f"Found SFEN: {self._position_sfen}")
+                            sfen_found = True
+                            break
+                
+                if sfen_found:
+                    return self._position_sfen
                             
         logger.error("Failed to get current SFEN after all retries")
         return self._position_sfen
@@ -415,52 +431,35 @@ class YaneuraOuEngine:
         if not self.process or self.process.poll() is not None:
             logger.error("Engine process not available")
             return "none"
-
-        # エンジンの状態確認と同期
-        for attempt in range(self._command_retries):
-            if attempt > 0:
-                logger.warning(f"Retrying engine sync (attempt {attempt + 1})")
-                time.sleep(0.2 * attempt)
-            
-            if not self.check_ready(timeout=timeout):
-                continue
-                
-            # 現在の局面を確認
-            logger.info(f"Current position: {self.position}")
-            if not self._send_command(self.position):
-                continue
-                
-            if not self.check_ready(timeout=timeout):
-                continue
-                
-            # 探索開始
-            self.message_queue.clear()
-            logger.info(f"Starting search with movetime {self.think_time_ms}ms")
-            if not self._send_command(f"go movetime {self.think_time_ms}"):
-                continue
-            
-            # bestmoveを待つ
-            bestmove_msg = self.message_queue.wait_for_type('bestmove', timeout=max(timeout, self.think_time_ms/1000 + 0.5))
-            if not bestmove_msg:
-                logger.warning("No bestmove received within timeout")
-                continue
-            
-            # 指し手をパース
-            try:
-                move = bestmove_msg['content'].split()[1]
-                logger.info(f"Found move: {move}")
-                
-                # 最終同期チェック
-                if self.check_ready(timeout=timeout):
-                    if self._send_command(self.position) and self.check_ready(timeout=timeout):
-                        logger.info(f"Successfully validated move: {move}")
-                        return move
-            except (IndexError, KeyError) as e:
-                logger.error(f"Failed to parse bestmove response: {e}")
-                continue
         
-        logger.error("Failed to get valid move after all retries")
-        return "none"
+        # 盤面情報を更新
+        # self._send_command(f"position sfen {self.position}")
+            
+        # 探索開始
+        self.message_queue.clear()
+        logger.info(f"Starting search with movetime {self.think_time_ms}ms")
+        if not self._send_command(f"go movetime {self.think_time_ms}"):
+            return "none"
+        
+        # bestmoveを待つ
+        bestmove_msg = self.message_queue.wait_for_type('bestmove', timeout=max(timeout, self.think_time_ms/1000 + 0.5))
+        if not bestmove_msg:
+            logger.warning("No bestmove received within timeout")
+            return "none"
+        
+        # 指し手をパース
+        try:
+            move = bestmove_msg['content'].split()[1]
+            logger.info(f"Found move: {move}")
+            
+            # 最終同期チェック
+            if self.check_ready(timeout=timeout):
+                if self._send_command(self.position) and self.check_ready(timeout=timeout):
+                    logger.info(f"Successfully validated move: {move}")
+                    return move
+        except (IndexError, KeyError) as e:
+            logger.error(f"Failed to parse bestmove response: {e}")
+            return "none"
 
     def get_position_evaluation(self, timeout: float = 1.0) -> float:
         """局面の評価値を取得（改善版）"""

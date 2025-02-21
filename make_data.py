@@ -7,11 +7,11 @@ from pathlib import Path
 from src.shogi import YaneuraOuEngine
 from src.data import ShogiDataGenerator
 
-def main(num_games: int = 100, seed: int = 42, think_time_ms: int = 1000):
+def main(data_size: int = 1000, seed: int = 42, think_time_ms: int = 1000):
     """Generate training data from shogi games.
     
     Args:
-        num_games: Number of games to generate.
+        data_size: Number of games to generate.
         seed: Random seed for reproducibility.
         think_time_ms: Thinking time limit per move in milliseconds.
     """
@@ -32,7 +32,7 @@ def main(num_games: int = 100, seed: int = 42, think_time_ms: int = 1000):
         generator = ShogiDataGenerator(engine)
         
         # Generate positions from games
-        positions = generator.generate_data(num_games=num_games)
+        positions = generator.generate_data(data_size=data_size)
         
         # Save raw positions to CSV
         generator.save_positions_csv(
@@ -45,10 +45,6 @@ def main(num_games: int = 100, seed: int = 42, think_time_ms: int = 1000):
             csv_path="datasets/positions.csv",
             output_path="datasets/training_data.jsonl"
         )
-        
-        # Print summary
-        total_positions = sum(len(game_pos) for game_pos in positions)
-        print(f"\nGenerated {total_positions} positions from {num_games} games")
         print(f"Data saved to:")
         print(f"- Raw positions: datasets/positions.csv")
         print(f"- Training data: datasets/training_data.jsonl")
@@ -59,4 +55,4 @@ def main(num_games: int = 100, seed: int = 42, think_time_ms: int = 1000):
 if __name__ == "__main__":
     # Create datasets directory if it doesn't exist
     Path("datasets").mkdir(exist_ok=True)
-    main(num_games=1, seed=42, think_time_ms=1000)  # Default 1 second thinking time
+    main(data_size=1000, seed=42, think_time_ms=100)  # Default 1 second thinking time

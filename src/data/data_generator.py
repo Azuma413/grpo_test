@@ -16,7 +16,7 @@ class ShogiDataGenerator:
         """
         self.engine = engine
 
-    def generate_data(self, num_games: int = 100) -> List[List[Dict[str, Any]]]:
+    def generate_data(self, data_size: int = 1000) -> List[List[Dict[str, Any]]]:
         """Generate training data from multiple games.
         
         Args:
@@ -30,18 +30,16 @@ class ShogiDataGenerator:
                 - move_number: Move number in the game
         """
         all_positions = []
-        for game_num in range(num_games):
+        total_positions = 0
+        while total_positions < data_size:
             game_positions = self._generate_game_positions()
             if game_positions:  # Only add if positions were generated
                 all_positions.append(game_positions)
-                print(f"Game {game_num + 1}: Generated {len(game_positions)} positions")
-            else:
-                print(f"Game {game_num + 1}: Failed to generate positions")
-        
-        total_positions = sum(len(game_pos) for game_pos in all_positions)
+                total_positions += len(game_positions)
+                print(total_positions, " / ", data_size)
         print(f"\nGenerated total of {total_positions} positions from {len(all_positions)} successful games")
         
-        return all_positions # これが良くない
+        return all_positions
 
     def _generate_game_positions(self) -> List[Dict[str, Any]]:
         """Generate all positions from a single game.
@@ -52,35 +50,23 @@ class ShogiDataGenerator:
         positions = []
         moves = []
         move_number = 0
-        
-        # Set initial position
-        initial_position = "position startpos"
-        self.engine._send_command(initial_position)
-        self.engine._send_command("isready")
-        if not self.engine.message_queue.wait_for_type('readyok', timeout=1.0):
-            print("Failed to set initial position")
-            return []
-        
-        # Get initial SFEN and store position
-        current_sfen = self.engine.get_current_sfen(initial_position)
-        positions.append({
-            "sfen": current_sfen,
-            "hands": "なし",
-            "move_number": move_number,
-            "previous_move": ""
-        })
-        
+        self.engine.check_ready()
+        sente_flag = True
+
         while True:
-            next_move = self.engine.get_best_move(timeout=2.0) # 最善手を取得
-            if next_move == "none": # 最善手がない場合は詰み
-                print("Game over")
-                break
-            moves.append(next_move)
-            next_position = f"position startpos moves {' '.join(moves)}"
-            current_sfen = self.engine.get_current_sfen(next_position)
+            if not moves: # movesが空の場合
+                current_sfen = self.engine.get_current_sfen("position startpos")
+            else:
+                next_position = f"position startpos moves {' '.join(moves)}"
+                current_sfen = self.engine.get_current_sfen(next_position)
             if not current_sfen: # SFENの取得に失敗
                 print("Failed to get updated SFEN")
                 break
+            next_move = self.engine.get_best_move(timeout=2.0) # 最善手を取得
+            if next_move == "none" or next_move == "resign": # 最善手がない場合は詰み
+                print("Game over: ", next_move)
+                break
+            moves.append(next_move)
             # 持ち駒の取得
             hands = "なし"  # Default value
             if " w " in current_sfen:
@@ -93,12 +79,12 @@ class ShogiDataGenerator:
                 "sfen": current_sfen,
                 "hands": hands,
                 "move_number": move_number,
-                "previous_move": next_move
+                "previous_move": next_move,
+                "player": "sente" if sente_flag else "gote"
             })
-            print(f"Move {move_number}: {next_move}")
+            # print(f"Move {move_number}: {next_move}")
             move_number += 1
-            if move_number >= 10: # 10手までで終了
-                break
+            sente_flag = not sente_flag
         
         return positions
 
@@ -124,7 +110,7 @@ class ShogiDataGenerator:
         os.makedirs(os.path.dirname(filepath), exist_ok=True)
         
         with open(filepath, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.DictWriter(f, fieldnames=['sfen', 'hands', 'game_id', 'move_number', 'previous_move'])
+            writer = csv.DictWriter(f, fieldnames=['sfen', 'hands', 'game_id', 'move_number', 'previous_move', 'player'])
             writer.writeheader()
             for game_id, game_positions in enumerate(positions):
                 for pos in game_positions:
@@ -133,7 +119,8 @@ class ShogiDataGenerator:
                         'hands': pos['hands'],
                         'game_id': game_id,
                         'move_number': pos['move_number'],
-                        'previous_move': pos.get('previous_move', '')
+                        'previous_move': pos.get('previous_move', ''),
+                        'player': pos['player']
                     })
 
     def convert_to_jsonl(self, csv_path: str = "datasets/positions.csv", 
@@ -151,8 +138,9 @@ class ShogiDataGenerator:
             reader = csv.DictReader(csvfile)
             for row in reader:
                 markdown_board = sfen_to_markdown(row['sfen'], row['hands'])
+                player = "先手" if row['player'] == "sente" else "後手"
                 entry = {
-                    "prompt": f"次の局面で指すべき手を考えてください。\n\n{markdown_board}",
+                    "prompt": f"貴方は{player}のプレイヤーです．次の局面で指すべき手を考えてください。\n\n{markdown_board}",
                     "response": ""
                 }
                 json.dump(entry, jsonlfile, ensure_ascii=False)
