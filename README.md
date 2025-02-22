@@ -1,56 +1,69 @@
-# grpo_test
-## 動作環境
-OS|Ubuntu24.04(wsl)
----|---
-GPU|RTX3090
-CUDA|12.6
+# GRPO Shogi Test
 
-## 動かし方 on wsl
+将棋の形勢判断をGRPO（Guided Reward Preference Optimization）を用いて学習するプロジェクト。Qwen2.5-3Bをベースモデルとして使用し、LoRAによる効率的な学習を実現。
+
+## プロジェクト構造
+
+```mermaid
+graph TD
+    A[grpo-test] --> B[src]
+    A --> C[datasets]
+    A --> D[outputs]
+    B --> E[data/]
+    B --> F[rewards/]
+    B --> G[shogi/]
+    C --> H[positions.csv]
+    C --> I[training_data.jsonl]
+```
+
+## 必要要件
+
+- Python >= 3.12
+- CUDA 12.6
+- GPU: RTX3090 or later
+- OS: Windows11 & Ubuntu 24.04 (WSL2)
+
+## 主要コンポーネント
+
+1. データ生成 (make_data.py)
+   - 学習用データの生成
+   - YaneuraOuエンジンを使用した形勢評価
+
+2. モデル学習 (main.py)
+   - GRPOによる学習
+   - wandbによる実験管理
+   - LoRA適用による効率的な学習
+
+3. 評価システム (src/rewards/)
+   - 複数の報酬関数による評価
+   - 形式と内容の両面での評価
+
+## セットアップと実行
+
+1. 環境構築
 ```bash
+git clone https://github.com/Azuma413/grpo_test.git
+# uvがインストールされていなければ
 pip install uv
+cd grpo_test
 uv sync
+```
+2. やねうら王のインストール\
+[こちらのページ](https://github.com/yaneurao/YaneuraOu/wiki/%E3%82%84%E3%81%AD%E3%81%86%E3%82%89%E7%8E%8B%E3%81%AE%E3%82%A4%E3%83%B3%E3%82%B9%E3%83%88%E3%83%BC%E3%83%AB%E6%89%8B%E9%A0%86)を参照して，Windowsにやねうら王をインストールしてください．
+3. データセットの生成
+```bash
+uv run make_data.py
+```
+4. 学習の実行
+```bash
 uv run main.py
 ```
-
-## 結果
-- Without LoRA
+5. 推論の実行
+```bash
+uv run inference.py
 ```
-9.11 is bigger than 9.9. When comparing decimal numbers, you look at the digits from left to right. Both numbers have a "9" in the ones place, but 9.11 has a "1" in the tenths place, whereas 9.9 has a "9" in the tenths place. Since 1 is less than 9, you need to consider the hundredths place. In 9.11, the hundredths place is "1", and in 9.9, it can be thought of as "0" (since 9.9 is equivalent to 9.90). Therefore, 9.11 is greater than 9.9.
-```
-- With LoRA
-```
-<reasoning>
-To determine which number is larger between 9.11 and 9.9, we can compare them digit by digit starting from the leftmost digit.
 
-1. **Compare the whole number part:** Both numbers have the same whole number part, which is 9. Therefore, we proceed to the next digit.
+## 参考資料
 
-2. **Compare the tenths place:** 
-   - For 9.11, the tenths digit is 1.
-   - For 9.9, the tenths digit is 9.
-
-   Since 1 is less than 9, 9.11 is smaller than 9.9 based on the tenths place comparison.
-
-Therefore, without needing to look at further digits, 9.9 is greater than 9.11.
-</reasoning>
-
-<answer>
-9.9 is bigger.
-</answer>
-```
-## 参考
-[WSL2でunslothのGPROトレーニングを試してみる](https://note.com/ngc_shj/n/nadc7d41aa970?sub_rt=share_sb)\
-[phi-4のGRPOやるipynb](https://colab.research.google.com/github/unslothai/notebooks/blob/main/nb/Phi_4_(14B)-GRPO.ipynb)
-
-
-## TODO
-make_data.pyを完成させる
-
-positions.csvに保存されるデータが更新されていない．
-
-training_data.jsonlのresponseの情報はいらない
-
-完全ランダムではなく候補となる手の上位kからランダムに選ぶようにする．
-
-重複している実装を削除する
-
-データセットを構築して，実際に学習を行う
+- [WSL2でunslothのGPROトレーニングを試してみる](https://note.com/ngc_shj/n/nadc7d41aa970?sub_rt=share_sb)
+- [phi-4のGRPOやるipynb](https://colab.research.google.com/github/unslothai/notebooks/blob/main/nb/Phi_4_(14B)-GRPO.ipynb)
