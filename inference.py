@@ -78,7 +78,11 @@ Respond in the following format:
 ...
 </answer>
 
-answerには１三歩のように将棋の指し手のみを記入してください。
+answerには"１三歩", "３六銀"のように将棋の指し手のみを記入してください。
+例:
+<answer>
+６四桂
+</answer>
 """
     # Generate moves with and without LoRA
     print("\nTesting model outputs:")
@@ -88,7 +92,7 @@ answerには１三歩のように将棋の指し手のみを記入してくだ�
     print(output)
     print("-" * 50)
     # With LoRA
-    output = generate_text(test_board, lora="grpo_saved_lora", system_prompt=system_prompt)
+    output = generate_text(test_board, lora="outputs/checkpoint-3417", system_prompt=system_prompt)
     print("With LoRA:")
     print(output)
     print("-" * 50)
